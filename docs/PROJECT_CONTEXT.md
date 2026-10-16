@@ -6,12 +6,13 @@ Upload this file to the Claude project "vmware-vm-control". It is the hand-off o
 
 A plugin that lets Claude operate and configure **any VMware Workstation / Player VM, any Windows guest from XP onward (incl. Server 2003-2025)**, usable by any professional - not tied to one VMware version, one VMware Tools version or one machine. Owner: Renan Cardoso - Dominio Automacao. Licence MIT. Public repo: `github.com/renancardoso86/vmware-vm-control`.
 
-## Status (end of session 2026-10-16)
+## Status (2026-10-16, late afternoon)
 
-- Latest release: **v0.4.4** (tag `v0.4.4`, commit `88420dc`; release asset `vmware-vm-control.plugin`, 56,242 bytes, sha256 starting `d27d5ee9`). OneDrive copy identical to the tag (25 files, no `__pycache__`, `dist\` holds only `vmware-vm-control-0.4.4.plugin`).
-- Renan installed the 0.4.4 package and restarted the app; after the restart `vm_list` answered (Workstation 17.5, vmrun 1.17.0). The installed version number itself was not read back: a levantar (`vm_list` does not print it).
-- VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us) and `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login. Test VMs (WinXP-Test, Server 2019, linked clone) were deleted; `state.json` cleaned (`_created` = []).
-- Next session: pick from the backlog below (admin-rights test for NAT/Tools typing, more layouts, Linux/macOS host).
+- Latest release: **v0.5.1** - the release package bundles the official embeddable Python 3.14.8, so Windows users do not install Python. Marketplace / Claude Code installs come from the Git repository and still need Python 3.6+ (decision on bundling for those: a levantar - options: keep as is, commit Python to the repo, or download it on first use).
+- Renan's app runs a 0.5.0 test build of the same code (bundled Python confirmed from the app's plugin folder); the 0.5.1 package replaces it.
+- VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us) and `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login. Test VMs deleted; `state.json` `_created` = [].
+- Installation guides (PDF, English and Portuguese) in the OneDrive `dist\` folder.
+- Next: marketplace decision, more layouts, admin-rights test for NAT/Tools typing, Linux/macOS host.
 
 ## Decisions (with the reason)
 
@@ -32,6 +33,8 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 | `vm_create` (0.4.0) writes the `.vmx` itself + `vmware-vdiskmanager` disk, guest presets XP-2025 | Creating test VMs without the VMware wizard; XP/2003 get IDE disk + default PCnet NIC (in-box drivers), Vista+ SATA + e1000/e1000e; Windows 11 left to the wizard (TPM + encryption) |
 | Hardware version: only verified mappings (`vmrun 1.17` -> 20), else highest among existing VMs, else ask | Never guess; hw 20 also opens on Workstation 17.0 (Renan's existing VMs use 21) |
 | Guest operations check VMware Tools before asking for the login | Without Tools the credential dialog appeared for nothing (found in the XP test) |
+| Release package bundles the **official embeddable Python** (python.org, SHA-256 pinned in `release.yml`), stdlib unpacked to `python/Lib` | Users should not need to install Python (corporate PCs); the PSF-signed `python.exe` is less likely to be blocked than a self-built `.exe`; the Claude app refuses a `.plugin` containing a zip |
+| `launch.cmd` order: bundled Python, `py`, `python` (only if it really starts) | Windows 10/11 ship a Microsoft Store `python` alias that is not a real Python (exit 9009) |
 
 ## Architecture
 
@@ -52,6 +55,7 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 
 | Guest | Passed | Notes |
 |---|---|---|
+| Win 10 Pro 22H2 (fresh, no Python, no network) created by `vm_create` preset 10-64 - 2026-10-16, plugin 0.5.0 test build | SATA disk seen by setup without drivers; whole install + OOBE through VNC (local account, no password); Tools installed from Win+R; shared folder add/enable/set_state once Tools ran; package expanded in the guest and server started on the bundled Python (28 tools, 1.7 s); with the bundled Python removed the launcher stopped with "Python 3 not found" (Store alias exit 9009 not used) | `vm_shared_folders add` hung while Tools were not running (vmrun never returns) -> Tools check + 40 s limit; first click on some setup screens ignored, second worked (cause: a levantar) |
 | Win 7 SP1 Pro (ABNT2, Tools 12, VMnet2 host-only) | VNC screen incl. boot, click, keys, ABNT2 typing, cmd, PS 2.0, copy, Tools/IP, credential dialog | first layout detection missed the `d0010416` substitute -> fixed 0.3.1 |
 | Win XP Pro SP1 (setup only, no VMware Tools) - 2026-10-16, plugin 0.4.0 test build | `vm_create` XP preset (IDE disk seen as "atapi", CD boot, NAT, VNC 127.0.0.1:5903 auto-picked); VNC from first boot second incl. text-mode setup; keys (Enter, F8, arrows with repeat), clicks on lists/tabs/combos, typing; regional = Portuguese (Brazil) + ABNT2 set in setup; `vm_guest_info` / `vm_prepare` without Tools | stopped at product key (no XP licence); `vm_run` not run (would have opened the credential dialog -> fixed); `deleteVM` refused while the VM tab was open in Workstation -> clear message + cleanup of plugin backups added |
 | Win Server 2008 R2 Std - keyboard layouts 2026-10-16 (0.4.4 test copy) | Notepad switched to each layout (LoadKeyboardLayout + Alt+Shift / Ctrl+Shift), sample typed through VNC and read back with region zoom: de `Zürich yz YZ äöüß @€{[]}\\~ é è ê ý <>| §°²³`, es `Año ñÑ ¿¡ áéíóú º ª |@#~€¬`, pt `Ação ã õ ê «» @£§ {[]} €`, us-intl `Ação café crème naïve ' " ç` - all exact | a vmrun-launched (interactive) process could not find the user's windows (FindWindow = 0), so text was checked on screen; PowerShell 5 saved state.json with a BOM -> reader fixed in 0.4.4 |
@@ -87,6 +91,10 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 - Right after the app restarts (e.g. after installing a plugin), the cloud session briefly loses the bridge tools; they come back once the app is open and online.
 - Consider printing `SERVER_VERSION` in `vm_list` so the installed version can be checked without reading files on the PC.
 - Copying a 5.6 GB ISO from the SharePoint sync folder took about 10 minutes (~13 MB/s download).
+- The Claude app refuses a `.plugin` that contains a `.zip` file ("Zip cannot contain nested zip files").
+- `Expand-Archive` (PowerShell 5) only accepts files ending in `.zip`; copy a `.plugin` to `.zip` first.
+- vmrun shared-folder commands on a running VM wait for VMware Tools; without Tools they never return.
+- The Windows 10 22H2 ISO in `Instaladores\ISO` is cloud-only; copying it took 12 minutes (~8.5 MB/s). Setup without a key: "I don't have a product key", edition Pro; offline OOBE: "I don't have internet" > "Continue with limited setup".
 
 ## Backlog (next)
 
