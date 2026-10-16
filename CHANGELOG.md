@@ -3,6 +3,7 @@
 ## 0.5.0 - 2026-10-16
 - **No Python installation needed on Windows with the release package** (`vmware-vm-control.plugin`): it now bundles the official embeddable Python (3.14.8, Windows x64, signed by the Python Software Foundation, licence in `python/LICENSE.txt`). The release workflow downloads it from python.org, checks its SHA-256 and unpacks its standard library (`pythonXY.zip`) into `python/Lib`, because the Claude app refuses a `.plugin` that contains a zip file.
 - `launch.cmd` uses the bundled Python first, then an installed `py`, then `python` - skipping the Microsoft Store `python` alias, which is not a real Python. Installs from the Git repository (marketplace, Claude Code) do not carry the bundled Python and keep needing an installed Python 3.6+.
+- `vm_shared_folders` on a running VM checks VMware Tools first and gives up after 40 s: without Tools, vmrun `addSharedFolder` never returned and blocked the plugin (found on a fresh Windows 10 VM during setup).
 - `vm_list` (and `--self-test`) start with the plugin version and the Python in use (bundled or installed), so the running version can be checked from Claude.
 
 ## 0.4.4 - 2026-10-16

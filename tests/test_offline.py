@@ -282,6 +282,25 @@ class ServerTest(unittest.TestCase):
         self.assertIn('VMware Tools are not running', str(cm.exception))
         self.assertEqual(asked, [])                                  # no credential dialog shown
 
+    def test_shared_folder_on_running_vm_without_tools_fails_fast(self):
+        # vmrun waits for Tools forever on addSharedFolder; the tool must refuse before calling it
+        self._fake_vmrun(
+            'if [ -z "$1" ]; then printf "vmrun version 1.17.0 build-1\\n\\n'
+            'checkToolsState      Path to vmx file     Query the state of tools\\n'
+            'addSharedFolder      Path to vmx file     Add a Host-Guest shared folder\\n"; exit 0; fi\n'
+            'case "$*" in *checkToolsState*) echo unknown;; *addSharedFolder*) sleep 600;; *) echo "Total running VMs: 0";; esac\n',
+            '@echo off\r\nif "%~1"=="" (echo vmrun version 1.17.0 build-1& echo.& '
+            'echo checkToolsState      Path to vmx file     Query the state of tools& '
+            'echo addSharedFolder      Path to vmx file     Add a Host-Guest shared folder& exit /b 0)\r\n'
+            'echo %* | find "checkToolsState" >nul && (echo unknown& exit /b 0)\r\necho Total running VMs: 0\r\n')
+        m = self.m
+        m._is_running = lambda v, vmx: True
+        t0 = time.time()
+        with self.assertRaises(RuntimeError) as cm:
+            m.t_vm_shared_folders({'vm': self.vmx, 'action': 'add', 'share_name': 's', 'host_path': self.tmp.name})
+        self.assertIn('needs VMware Tools', str(cm.exception))
+        self.assertLess(time.time() - t0, 20)
+
     def test_delete_locked_vm_explains_open_tab(self):
         m = self.m
         os.makedirs(self.vmx + '.lck')

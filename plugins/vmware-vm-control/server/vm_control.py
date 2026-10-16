@@ -1019,7 +1019,20 @@ def t_vm_shared_folders(a):
                 'writable' if a.get('writable', True) else 'readonly']
     else:
         raise ValueError('action must be enable, disable, add, remove or set_state')
-    r = _ok(*v.run(args), what=args[0])
+    if _is_running(v, d['vmx']) and v.has('checkToolsState'):
+        # On a running VM these vmrun commands wait for VMware Tools in the guest - without Tools they never return
+        # (seen on a Windows 10 VM during setup), so check first instead of hanging past the caller's time limit.
+        try:
+            v.need_tools(d)
+        except RuntimeError as e:
+            raise RuntimeError('%s needs VMware Tools running in the guest while the VM is on. %s' % (args[0], e))
+    try:
+        rc, out = v.run(args, timeout=START_WAIT)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('%s did not finish within %d s and was stopped (vmrun usually waits like this when VMware '
+                           'Tools in the guest do not answer). Try again once the guest has fully started.'
+                           % (args[0], START_WAIT))
+    r = _ok(rc, out, what=args[0])
     _audit(args[0], d['name'], ' '.join(args[2:]))
     return r or '%s: OK (guest path on Windows: \\\\vmware-host\\Shared Folders\\<share>)' % args[0]
 
