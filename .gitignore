@@ -3,3 +3,4 @@ __pycache__/
 *.plugin
 dist/
 .DS_Store
+plugins/vmware-vm-control/python/

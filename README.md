@@ -10,11 +10,11 @@ Built for people who keep legacy engineering software alive in VMs (PLC / HMI / 
 | Commands, files, processes | `vmrun` + VMware Tools (legacy Tools 10.0.12 for XP / 2003) |
 | VM settings | any `.vmx` key, network adapters, devices, shared folders, snapshots, clones |
 | Setup | **zero-config**: VMs found by name, VNC secured automatically (127.0.0.1 + random password), guest login typed by you in the **native Windows credential dialog** and kept in Windows Credential Manager |
-| Dependencies | Python 3.6+ on the host, standard library only |
+| Dependencies | Windows + release package (`.plugin`): none, Python is bundled. Marketplace / Claude Code installs and other hosts: Python 3.6+ (standard library only) |
 
 ## Install
 
-**Claude desktop app (Cowork / chat):** download `vmware-vm-control.plugin` from the [latest release](../../releases/latest), open it in Claude and press *Install*. Restart the Claude app after installing or updating.
+**Claude desktop app (Cowork):** in *Customize > Plugins*, choose *Add > Add marketplace > Add from a repository* and enter `renancardoso86/vmware-vm-control`, then install the plugin (needs Python 3.6+ with the `py` launcher) - or download `vmware-vm-control.plugin` from the [latest release](../../releases/latest) and use *Add > Upload plugin* (Python bundled, nothing else to install). Restart the Claude app after installing or updating. The plugin runs a program on your PC, so it works in Cowork and Claude Code, not in chat on the web.
 
 **Claude Code:**
 
@@ -36,7 +36,7 @@ VMware Workstation 17.5 (vmrun 1.17), Windows 11 host:
 | Windows 7 SP1 Professional, ABNT2 keyboard | screen (incl. boot), click, keys, ABNT2 typing (AltGr, dead-key accents), cmd, PowerShell 2.0, file copy, credential dialog |
 | Windows Server 2008 R2 Standard, US keyboard, 1920x1080 | automatic free VNC port, built-in Administrator (elevated), cmd, PowerShell + ServerManager, files, processes, network adapters, US typing with Alt-code accents |
 
-Not yet tested on real hardware/software: VMware Player, Windows XP / Server 2003 guests, Linux and macOS hosts. Reports welcome in [issues](../../issues).
+More guests and VMware Player were tested later - see [CHANGELOG.md](CHANGELOG.md) and [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md). Not yet tested: Windows XP / Server 2003 beyond setup (no licence), Linux and macOS hosts. Reports welcome in [issues](../../issues).
 
 ## Development
 

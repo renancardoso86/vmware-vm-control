@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.4.4'
+SERVER_VERSION = '0.5.0'
 IS_WIN = os.name == 'nt'
 
 
@@ -486,11 +486,23 @@ def _map(d, x, y):
     return x / s, y / s
 
 
+def python_origin():
+    """'bundled' when running on the embeddable Python shipped in the plugin (it has a pythonXY._pth file)."""
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    pth = os.path.join(exe_dir, 'python%d%d._pth' % sys.version_info[:2])
+    return 'bundled' if os.path.exists(pth) else 'installed'
+
+
+def server_info():
+    return 'plugin server %s on Python %s (%s: %s)' % (
+        SERVER_VERSION, '.'.join(map(str, sys.version_info[:3])), python_origin(), sys.executable)
+
+
 def t_vm_list(a):
     v = VmRun()
     rc, out = v.run(['list'])
     running = [l.strip() for l in out.splitlines()[1:] if l.strip()]
-    lines = ['vmrun: %s (version %s, host type: %s, %d commands detected)' % (
+    lines = [server_info(), 'vmrun: %s (version %s, host type: %s, %d commands detected)' % (
         v.path, v.version, v.type, len(v.commands)), 'config (optional overrides): %s%s' % (
         v.cfg_path, '' if os.path.exists(v.cfg_path) else ' (none - not needed)'), '']
     lines.append('VMs found on this PC (VMware library / recent list / running / config):')
@@ -1795,6 +1807,7 @@ def main():
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--self-test':
+        print(server_info())
         cfg, p = load_config()
         print('config:', p, 'exists' if os.path.exists(p) else 'missing')
         try:

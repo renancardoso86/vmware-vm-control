@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 - 2026-10-16
+- **No Python installation needed on Windows with the release package** (`vmware-vm-control.plugin`): it now bundles the official embeddable Python (3.14.8, Windows x64, signed by the Python Software Foundation, licence in `python/LICENSE.txt`). The release workflow downloads it from python.org and checks its SHA-256 before packing.
+- `launch.cmd` uses the bundled Python first, then an installed `py`, then `python` - skipping the Microsoft Store `python` alias, which is not a real Python. Installs from the Git repository (marketplace, Claude Code) do not carry the bundled Python and keep needing an installed Python 3.6+.
+- `vm_list` (and `--self-test`) start with the plugin version and the Python in use (bundled or installed), so the running version can be checked from Claude.
+
 ## 0.4.4 - 2026-10-16
 - New keyboard layouts for typing through VNC: German (QWERTZ, 00000407), Spanish (0000040A), Portuguese - Portugal (00000816) and United States-International (00020409), with dead keys and AltGr; detected automatically from the guest registry. The extra ISO key left of Z (`< > |`) is typed with Alt codes.
 - Tested on Windows Server 2008 R2: each layout typed a sample with every special character of the language into Notepad and the result matched exactly.

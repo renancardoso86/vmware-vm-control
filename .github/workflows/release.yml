@@ -4,6 +4,11 @@ on:
     tags: ["v*"]
 permissions:
   contents: write
+env:
+  # Embeddable Python bundled in the package, so users do not need to install Python.
+  # Update both lines together; the SHA-256 is of the official zip from python.org.
+  PY_EMBED_VERSION: "3.14.8"
+  PY_EMBED_SHA256: "a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310"
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,6 +18,14 @@ jobs:
         with:
           python-version: "3.13"
       - run: python -m unittest discover -s tests -v
+      - name: Add the embeddable Python (Windows x64)
+        run: |
+          curl -fsSL -o embed.zip "https://www.python.org/ftp/python/${PY_EMBED_VERSION}/python-${PY_EMBED_VERSION}-embed-amd64.zip"
+          echo "${PY_EMBED_SHA256}  embed.zip" | sha256sum -c -
+          mkdir -p plugins/vmware-vm-control/python
+          unzip -q embed.zip -d plugins/vmware-vm-control/python
+          test -f plugins/vmware-vm-control/python/python.exe
+          test -f plugins/vmware-vm-control/python/LICENSE.txt
       - name: Build vmware-vm-control.plugin
         run: |
           cd plugins/vmware-vm-control

@@ -417,5 +417,46 @@ class ServerTest(unittest.TestCase):
         self.assertIn('vm_create', names)
 
 
+class PackagingTest(unittest.TestCase):
+    ROOT = os.path.join(HERE, '..')
+
+    def test_launcher_prefers_bundled_python_and_skips_store_alias(self):
+        t = open(os.path.join(SERVER, 'launch.cmd'), encoding='ascii').read()
+        emb, py, alias = t.index('..\\python\\python.exe'), t.index('where py'), t.index('python -c "import sys"')
+        self.assertLess(emb, py)
+        self.assertLess(py, alias)                      # plain "python" only after a real start check
+        self.assertNotIn('where python', t)
+
+    def test_release_bundles_pinned_embeddable_python(self):
+        import re
+        t = open(os.path.join(self.ROOT, '.github', 'workflows', 'release.yml'), encoding='utf-8').read()
+        self.assertRegex(t, r'PY_EMBED_VERSION: "3\.\d+\.\d+"')
+        self.assertRegex(t, r'PY_EMBED_SHA256: "[0-9a-f]{64}"')
+        self.assertIn('sha256sum -c', t)
+        self.assertTrue(re.search(r'unzip .*plugins/vmware-vm-control/python', t))
+
+    def test_server_reports_version_and_python_origin(self):
+        import vm_control
+        self.assertIn(vm_control.SERVER_VERSION, vm_control.server_info())
+        with tempfile.TemporaryDirectory() as d:
+            exe = os.path.join(d, 'python.exe')
+            open(os.path.join(d, 'python%d%d._pth' % sys.version_info[:2]), 'w').close()
+            old = sys.executable
+            try:
+                sys.executable = exe
+                self.assertEqual(vm_control.python_origin(), 'bundled')
+            finally:
+                sys.executable = old
+        self.assertEqual(vm_control.python_origin(), 'installed')
+
+    def test_versions_match(self):
+        import vm_control
+        plugin = json.load(open(os.path.join(self.ROOT, 'plugins', 'vmware-vm-control', '.claude-plugin', 'plugin.json')))
+        market = json.load(open(os.path.join(self.ROOT, '.claude-plugin', 'marketplace.json')))
+        self.assertEqual(plugin['version'], vm_control.SERVER_VERSION)
+        self.assertEqual(market['plugins'][0]['version'], vm_control.SERVER_VERSION)
+        self.assertIn('## %s' % vm_control.SERVER_VERSION, open(os.path.join(self.ROOT, 'CHANGELOG.md'), encoding='utf-8').read())
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
