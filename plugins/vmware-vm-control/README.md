@@ -86,6 +86,7 @@ VNC bound to 127.0.0.1 with generated password (wrong/empty password refused) on
 
 ## Limitations
 
+- Typing through VNC knows the guest keyboard layout: US, US-International, Portuguese (Brazil ABNT/ABNT2), Portuguese (Portugal), Spanish, German; other layouts fall back to Alt codes for symbols.
 - VMware Player: no snapshots, and **no embedded VNC server** (Player 17.5 reads the `RemoteDisplay.vnc.*` keys but never opens the port), so no mouse/keyboard. On Player the screen is view-only through `vmrun captureScreen` (needs VMware Tools and the stored guest login); commands, files, processes and power work normally. Open the VM in Workstation for full control.
 - Keyboard: `vm_type` has full tables for US and Brazilian ABNT/ABNT2 (auto-detected from the guest registry); other layouts fall back to Alt+0NNN codes (Num Lock on). Tested: uppercase, symbols, AltGr symbols, dead-key accents on an ABNT2 Windows 7 guest.
 - After installing a new plugin version, restart the Claude desktop app so the new server and tool list are loaded.

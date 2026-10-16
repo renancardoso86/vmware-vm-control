@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.4.3'
+SERVER_VERSION = '0.4.4'
 IS_WIN = os.name == 'nt'
 
 
@@ -209,7 +209,7 @@ def state_path():
 
 def load_state():
     try:
-        with open(state_path(), 'r', encoding='utf-8') as f:
+        with open(state_path(), 'r', encoding='utf-8-sig') as f:   # tolerate a BOM (file edited in Notepad)
             return json.load(f)
     except (OSError, ValueError):
         return {}
@@ -671,7 +671,7 @@ def t_vm_type(a):
         if risky:
             raise RuntimeError('Guest keyboard layout unknown, so these characters could come out wrong: %r. '
                                'Run vm_prepare (detects the layout when VMware Tools + login are available) or pass '
-                               '"layout" explicitly. Letters, digits, space and Enter are safe.' % ''.join(risky))
+                               '"layout" explicitly. Letters (except y/z on German keyboards), digits, space and Enter are safe.' % ''.join(risky))
         lay = 'us'
     if a.get('layout'):
         set_vm_state(d['vmx'], keyboard_layout=lay)

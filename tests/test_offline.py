@@ -110,6 +110,40 @@ class KeyboardTest(unittest.TestCase):
         self.assertEqual(self._keys('ç', 'abnt2'), [ord(';')])
         self.assertEqual(self._keys('ã', 'abnt2'), [ord("'"), ord('a')])
 
+    def test_german_qwertz(self):
+        C, A, S = keyboard.CTRL, keyboard.ALT, keyboard.SHIFT
+        self.assertEqual(self._keys('z', 'de'), [ord('y')])               # Y/Z swapped
+        self.assertEqual(self._keys('ü', 'de'), [ord('[')])
+        self.assertEqual(self._keys('@', 'de'), [C, A, ord('q')])
+        self.assertEqual(self._keys('é', 'de'), [ord('='), ord('e')])      # dead acute + e
+        self.assertEqual(self._keys('ý', 'de'), [ord('='), ord('z')])      # accent on the swapped key
+        self.assertEqual(self._keys('<', 'de')[0], A)                      # extra ISO key -> Alt code
+
+    def test_spanish(self):
+        self.assertEqual(self._keys('ñ', 'es'), [ord(';')])
+        self.assertEqual(self._keys('¿', 'es'), [keyboard.SHIFT, ord('=')])
+        self.assertEqual(self._keys('ü', 'es'), [keyboard.SHIFT, ord("'"), ord('u')])
+
+    def test_portuguese_portugal(self):
+        self.assertEqual(self._keys('ç', 'pt'), [ord(';')])
+        self.assertEqual(self._keys('ã', 'pt'), [ord('\\'), ord('a')])
+        self.assertEqual(self._keys('ê', 'pt'), [keyboard.SHIFT, ord('\\'), ord('e')])
+
+    def test_us_international_dead_quote(self):
+        self.assertEqual(self._keys("'", 'us-intl'), [ord("'"), 0x20])    # dead key + space = literal
+        self.assertEqual(self._keys('ç', 'us-intl'), [ord("'"), ord('c')])
+
+    def test_every_layout_types_plain_text(self):
+        for lay in keyboard.LAYOUTS:
+            ev, bad = keyboard.plan('Hello World 0123456789 .,-', lay)
+            self.assertEqual(bad, [], lay)
+
+    def test_layout_detection_tables(self):
+        self.assertEqual(keyboard.KLID_TO_LAYOUT['00000407'], 'de')
+        self.assertEqual(keyboard.KLID_TO_LAYOUT['0000040a'], 'es')
+        self.assertEqual(keyboard.KLID_TO_LAYOUT['00000816'], 'pt')
+        self.assertEqual(keyboard.KLID_TO_LAYOUT['00020409'], 'us-intl')
+
     def test_unmapped_uses_alt_code(self):
         ks = self._keys('\\', 'abnt2')
         self.assertEqual(ks[0], keyboard.ALT)
@@ -363,6 +397,13 @@ class ServerTest(unittest.TestCase):
             self.assertEqual(calls[0]['command'], 'chcp')
         finally:
             m.t_vm_run = real
+
+    def test_state_file_with_bom_is_read(self):
+        m = self.m
+        m.set_vm_state(self.vmx, keyboard_layout='de')
+        raw = open(m.state_path(), 'rb').read()
+        open(m.state_path(), 'wb').write(b'\xef\xbb\xbf' + raw)      # as Notepad / PowerShell 5 would save it
+        self.assertEqual(m.vm_state(self.vmx).get('keyboard_layout'), 'de')
 
     def test_mcp_handshake(self):
         p = subprocess.run([sys.executable, os.path.join(SERVER, 'vm_control.py')],

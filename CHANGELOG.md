@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4 - 2026-10-16
+- New keyboard layouts for typing through VNC: German (QWERTZ, 00000407), Spanish (0000040A), Portuguese - Portugal (00000816) and United States-International (00020409), with dead keys and AltGr; detected automatically from the guest registry. The extra ISO key left of Z (`< > |`) is typed with Alt codes.
+- Tested on Windows Server 2008 R2: each layout typed a sample with every special character of the language into Notepad and the result matched exactly.
+- `state.json` is read even when saved with a BOM (Notepad / PowerShell 5).
+
 ## 0.4.3 - 2026-10-16
 Fixes from the Windows Server 2019 (SATA preset) test:
 - The credential dialog is brought to the foreground - it opened behind the user's windows, so nobody saw it.
