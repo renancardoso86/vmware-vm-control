@@ -26,10 +26,22 @@ jobs:
           unzip -q embed.zip -d plugins/vmware-vm-control/python
           test -f plugins/vmware-vm-control/python/python.exe
           test -f plugins/vmware-vm-control/python/LICENSE.txt
+          # The Claude app refuses a .plugin that contains a zip file: unpack the standard library
+          # (pythonXY.zip) into python/Lib and point pythonXY._pth at that folder.
+          cd plugins/vmware-vm-control/python
+          mkdir Lib
+          unzip -q python3*.zip -d Lib
+          rm python3*.zip
+          sed -i -E 's/^python3[0-9]+\.zip(\r?)$/Lib\1/' python3*._pth
+          grep -q '^Lib' python3*._pth
+          test -z "$(find . -iname '*.zip')"
+          cd ../../..
       - name: Build vmware-vm-control.plugin
         run: |
           cd plugins/vmware-vm-control
           zip -r ../../vmware-vm-control.plugin . -x "*__pycache__*"
+          cd ../..
+          if unzip -Z1 vmware-vm-control.plugin | grep -qi '\.zip$'; then echo "nested zip in package"; exit 1; fi
       - uses: softprops/action-gh-release@v2
         with:
           files: vmware-vm-control.plugin

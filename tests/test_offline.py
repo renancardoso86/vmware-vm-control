@@ -434,6 +434,8 @@ class PackagingTest(unittest.TestCase):
         self.assertRegex(t, r'PY_EMBED_SHA256: "[0-9a-f]{64}"')
         self.assertIn('sha256sum -c', t)
         self.assertTrue(re.search(r'unzip .*plugins/vmware-vm-control/python', t))
+        self.assertIn('unzip -q python3*.zip -d Lib', t)          # the app refuses a zip inside the .plugin
+        self.assertIn("grep -qi '\\.zip$'", t)
 
     def test_server_reports_version_and_python_origin(self):
         import vm_control
