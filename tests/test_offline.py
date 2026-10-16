@@ -339,6 +339,17 @@ class ServerTest(unittest.TestCase):
         self.assertLess(time.time() - t0, 5)
         self.assertEqual((out, rc), ('started', 0))
 
+    @unittest.skipIf(os.name == 'nt', 'POSIX fake vmrun')
+    def test_power_actions_never_block_past_the_limit(self):
+        # a soft stop that waits for the guest: the tool must answer in time and say it is still in progress
+        self._fake_vmrun('case "$1 $2 $3" in *stop*) sleep 20;; esac\necho "Total running VMs: 0"\n', '')
+        m = self.m
+        m.START_WAIT = 2
+        t0 = time.time()
+        out = m.t_vm_power({'vm': self.vmx, 'action': 'stop'})
+        self.assertLess(time.time() - t0, 8)
+        self.assertIn('still in progress', out)
+
     def test_mcp_handshake(self):
         p = subprocess.run([sys.executable, os.path.join(SERVER, 'vm_control.py')],
                            input=b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'

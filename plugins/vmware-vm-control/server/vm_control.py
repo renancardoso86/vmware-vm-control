@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.4.1'
+SERVER_VERSION = '0.4.2'
 IS_WIN = os.name == 'nt'
 
 
@@ -349,7 +349,8 @@ HINTS = {
                             'not run elevated. Ask the user to remove the rule in Workstation: Edit > Virtual Network '
                             'Editor > Change Settings > VMnet8 > NAT Settings.',
     'typekeystrokesinguest': 'Typing through VMware Tools was refused on this host; use vm_type with method "vnc" '
-                             '(the default), which works for any guest.',
+                             '(the default), which works for any guest on Workstation (VMware Player has no VNC: '
+                             'use vm_run to do the same through commands).',
 }
 
 
@@ -386,7 +387,23 @@ STATE = {'scale': {}}  # last screenshot scale per VM
 LOCK = threading.Lock()
 
 
+PLAYER_NO_VNC = ('VMware Player does not start the embedded VNC server (checked on Workstation 17.5 / Player 17.5: '
+                 'the .vmx keys are read but no VNC listener is opened), so mouse and keyboard are not available on '
+                 'Player. What works: vm_screenshot (view only, through vmrun captureScreen), vm_run, vm_copy, '
+                 'vm_files, vm_processes, vm_power. Opening the VM in VMware Workstation gives full control.')
+
+
+def _host_is_player():
+    try:
+        cfg = load_config()[0]
+        return host_type(cfg, find_vmrun(cfg)) == 'player'
+    except (RuntimeError, OSError, ValueError):
+        return False
+
+
 def _vnc(d):
+    if _host_is_player():
+        raise RuntimeError(PLAYER_NO_VNC)
     host = d.get('vnc_host', '127.0.0.1')
     port = d.get('vnc_port')
     if not port:
@@ -475,7 +492,7 @@ def t_vm_power(a):
     d = resolve_vm(v.cfg, a.get('vm'))
     action = a['action']
     if action == 'start':
-        for _ in range(15):  # a VM still powering off (lock folder present) cannot be started yet
+        for _ in range(5):  # a VM still powering off (lock folder present) cannot be started yet
             lck = d['vmx'] + '.lck'
             if not _is_running(v, d['vmx']) and not os.path.isdir(lck):
                 break
@@ -487,31 +504,34 @@ def t_vm_power(a):
         args.append('gui' if a.get('gui', True) else 'nogui')
     elif action in ('stop', 'reset', 'suspend'):
         args.append(a.get('mode', 'soft'))
+    # vmrun can take minutes (opening the Workstation window, a soft stop/reset waiting for the guest to shut down):
+    # never block longer than START_WAIT - remote callers give up after ~60 s and queue the next calls.
+    kw = {'creationflags': 0x08000000} if IS_WIN else {}
+    outf = tempfile.TemporaryFile()
+    p = subprocess.Popen([v.path, '-T', v.type] + args, stdin=subprocess.DEVNULL, stdout=outf,
+                         stderr=subprocess.STDOUT, **kw)
+    deadline = time.time() + START_WAIT
+    while time.time() < deadline:
+        if p.poll() is not None:
+            break
+        if action == 'start' and _is_running(v, d['vmx']):
+            return 'start: OK (VM running; VMware may still be opening its window)'
+        time.sleep(2)
+    if p.poll() is None:
+        _audit('power_' + action, d['name'], 'still running after %ds' % START_WAIT)
+        return ('%s: still in progress after %ds (%s). Check with vm_list in a moment; do not repeat the call.'
+                % (action, START_WAIT, 'VMware is probably opening its window or showing a question'
+                   if action == 'start' else 'the guest is still shutting down / restarting'))
+    outf.seek(0)
+    out = outf.read().decode('utf-8', 'replace').strip()
+    outf.close()
+    _ok(p.returncode, out, 'vmrun ' + action)
     if action == 'start':
-        # vmrun start can take minutes when it has to open the Workstation window first; never block that long
-        kw = {'creationflags': 0x08000000} if IS_WIN else {}
-        outf = tempfile.TemporaryFile()
-        p = subprocess.Popen([v.path, '-T', v.type] + args, stdin=subprocess.DEVNULL, stdout=outf,
-                             stderr=subprocess.STDOUT, **kw)
-        deadline = time.time() + START_WAIT
-        while time.time() < deadline:
-            if p.poll() is not None:
-                break
-            if _is_running(v, d['vmx']):
-                return 'start: OK (VM running; VMware may still be opening its window)'
-            time.sleep(2)
-        if p.poll() is None:
-            return ('start: still in progress after %ds (VMware is probably opening its window or showing a '
-                    'question). Check with vm_list in a moment; do not call start again.' % START_WAIT)
-        outf.seek(0)
-        out = outf.read().decode('utf-8', 'replace').strip()
-        outf.close()
-        _ok(p.returncode, out, 'vmrun start')
         time.sleep(3)
         if not _is_running(v, d['vmx']):
             return 'start: OK - but the VM is not listed as running; check the VMware window for a question dialog.'
         return 'start: OK'      # vmrun's own output here is UI log paths and harmless I/O warnings
-    return _ok(*v.run(args, timeout=300), what='vmrun ' + action) or ('%s: OK' % action)
+    return out or '%s: OK' % action
 
 
 def t_vm_snapshot(a):
@@ -544,7 +564,12 @@ def t_vm_screenshot(a):
                 scale = min(1.0, 1280.0 / max(w, 1))
             png, ow, oh = c.png(region=region, scale=scale)
     except (VNCError, RuntimeError) as e:
-        if not v.has('captureScreen') or not d.get('guest_user'):
+        if isinstance(e, VNCError) and not _is_running(v, d['vmx']):
+            state = 'suspended' if any(f.lower().endswith('.vmss') for f in os.listdir(os.path.dirname(d['vmx']))) \
+                else 'powered off'
+            raise RuntimeError('The VM is %s, so there is no screen to capture. vm_power start %s it.' % (
+                state, 'resumes' if state == 'suspended' else 'starts'))
+        if not v.has('captureScreen') or not (d.get('guest_user') or creds.read(d['vmx'])[0]):
             raise
         with tempfile.TemporaryDirectory() as td:
             f = os.path.join(td, 'screen.png')
@@ -552,8 +577,9 @@ def t_vm_screenshot(a):
             with open(f, 'rb') as fh:
                 png = fh.read()
         STATE['scale'][d['name']] = 1.0
-        return [{'type': 'text', 'text': 'VNC unavailable (%s). Fallback: vmrun captureScreen (view only, full size; '
-                 'mouse/keyboard still need VNC, typing can use vm_type method "tools").' % e},
+        why = 'VMware Player has no VNC' if v.type == 'player' else 'VNC unavailable (%s)' % e
+        return [{'type': 'text', 'text': '%s. Fallback: vmrun captureScreen (view only, full size, needs VMware Tools '
+                 'and the stored guest login; mouse and keyboard need VNC).' % why},
                 {'type': 'image', 'data': base64.b64encode(png).decode('ascii'), 'mimeType': 'image/png'}]
     if not region:
         STATE['scale'][d['name']] = scale
@@ -1399,7 +1425,10 @@ def t_vm_prepare(a):
     rep = ['VM: %s' % d['name'], '.vmx: %s' % vmx, 'State: %s' % ('running' if running else 'powered off')]
     # 1) VNC
     want = _vnc_wanted(vmx)
-    if not want:
+    if v.type == 'player':
+        rep.append('VNC: not available on VMware Player (no VNC server) - screen is view-only through vmrun '
+                   'captureScreen; no mouse/keyboard. Commands and files work through VMware Tools.')
+    elif not want:
         rep.append('VNC: ready (127.0.0.1:%s, password set)' % _read_vmx(vmx).get('remotedisplay.vnc.port'))
     elif not running:
         t_vm_settings({'vm': vmx, 'action': 'set', 'set': want, '_quiet': True})

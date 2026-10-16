@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 - 2026-10-16
+- VMware Player: detected and explained - Player never starts the embedded VNC server, so mouse/keyboard tools say so clearly; `vm_screenshot` falls back to `vmrun captureScreen` and `vm_prepare` reports the limitation.
+- `vm_screenshot` fallback to `captureScreen` also works with the login stored in Credential Manager (it used to require a config file).
+- All `vm_power` actions answer within 40 s (a soft stop/reset waits for the guest and used to exceed the ~60 s limit of remote callers).
+- `vm_screenshot` on a suspended or powered-off VM says so and how to resume/start it.
+- Tested: two VMs at once (VNC 5902 + 5903), VNC reconnects after a guest restart and after suspend/resume, captureScreen fallback with VNC off.
+
 ## 0.4.1 - 2026-10-16
 Fixes from the test round on Workstation 17.5 / Windows Server 2008 R2:
 - `vm_device`: parameter renamed to `device_name` - remote callers (Claude cloud sessions linked to the PC) drop a parameter called `device`.

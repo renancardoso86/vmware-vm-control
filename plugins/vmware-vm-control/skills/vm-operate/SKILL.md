@@ -21,6 +21,7 @@ All tools run on the host. Screen, mouse and keyboard go through the VNC server 
 | GUI-only programs, dialogs, legacy configuration tools | `vm_screenshot` + `vm_click` / `vm_type` / `vm_key` | Works for any application |
 | Moving files | `vm_copy`, `vm_files` | No network share needed |
 | Risky change | `vm_snapshot` (`create`) first | Workstation/Fusion only - not Player |
+| VMware Player host | `vm_screenshot` (view only), `vm_run`, `vm_copy`, `vm_files`, `vm_processes`, `vm_power` | Player has no VNC: no clicks or typing - do the work through `vm_run` commands, or ask the user to open the VM in Workstation |
 
 ## GUI loop
 
