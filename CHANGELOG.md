@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 - 2026-10-16
+Fixes from the Windows Server 2019 (SATA preset) test:
+- The credential dialog is brought to the foreground - it opened behind the user's windows, so nobody saw it.
+- `vm_run` keeps accents: cmd scripts are written and read in the guest's console code page (probed once with `chcp` and remembered: 437 on English Windows, 850 on Portuguese...); PowerShell answers in UTF-8. Characters the code page lacks (e.g. `ã` in 437) come back as `?` in cmd - use PowerShell for such text.
+- `vm_run` answers within ~30 s: a longer command keeps running in the guest and the reply says where its output is being written.
+- `vm_manage install_tools` answers within 40 s (vmrun waited for an installer that Windows Server does not start by itself) and says how to run it.
+- Tested: `vm_create` preset 2019 on Workstation 17.5 - SATA disk and e1000e seen by Windows Setup without drivers; full install through VNC; Tools; PowerShell 5.1; elevated built-in Administrator.
+
 ## 0.4.2 - 2026-10-16
 - VMware Player: detected and explained - Player never starts the embedded VNC server, so mouse/keyboard tools say so clearly; `vm_screenshot` falls back to `vmrun captureScreen` and `vm_prepare` reports the limitation.
 - `vm_screenshot` fallback to `captureScreen` also works with the login stored in Credential Manager (it used to require a config file).

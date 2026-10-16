@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.4.2'
+SERVER_VERSION = '0.4.3'
 IS_WIN = os.name == 'nt'
 
 
@@ -368,6 +368,29 @@ def _run_to_file(cmd, timeout, kw):
         return f.read().decode('utf-8', 'replace').strip(), rc
 
 
+def _run_bounded(v, args, wait=None, poll=None):
+    """Run vmrun without blocking past `wait` seconds. Returns (finished, rc, out). `poll()` returning True ends
+    the wait early (e.g. the VM is already running). The vmrun process keeps going in the background."""
+    wait = START_WAIT if wait is None else wait
+    kw = {'creationflags': 0x08000000} if IS_WIN else {}
+    outf = tempfile.TemporaryFile()
+    p = subprocess.Popen([v.path, '-T', v.type] + args, stdin=subprocess.DEVNULL, stdout=outf,
+                         stderr=subprocess.STDOUT, **kw)
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        if p.poll() is not None:
+            break
+        if poll and poll():
+            return False, None, 'early'
+        time.sleep(2)
+    if p.poll() is None:
+        return False, None, ''
+    outf.seek(0)
+    out = outf.read().decode('utf-8', 'replace').strip()
+    outf.close()
+    return True, p.returncode, out
+
+
 def _ok(rc, out, what):
     if rc != 0:
         msg = '%s failed (vmrun exit %s): %s' % (what, rc, out or 'no output')
@@ -506,26 +529,15 @@ def t_vm_power(a):
         args.append(a.get('mode', 'soft'))
     # vmrun can take minutes (opening the Workstation window, a soft stop/reset waiting for the guest to shut down):
     # never block longer than START_WAIT - remote callers give up after ~60 s and queue the next calls.
-    kw = {'creationflags': 0x08000000} if IS_WIN else {}
-    outf = tempfile.TemporaryFile()
-    p = subprocess.Popen([v.path, '-T', v.type] + args, stdin=subprocess.DEVNULL, stdout=outf,
-                         stderr=subprocess.STDOUT, **kw)
-    deadline = time.time() + START_WAIT
-    while time.time() < deadline:
-        if p.poll() is not None:
-            break
-        if action == 'start' and _is_running(v, d['vmx']):
-            return 'start: OK (VM running; VMware may still be opening its window)'
-        time.sleep(2)
-    if p.poll() is None:
+    done, rc, out = _run_bounded(v, args, poll=(lambda: _is_running(v, d['vmx'])) if action == 'start' else None)
+    if not done and out == 'early':
+        return 'start: OK (VM running; VMware may still be opening its window)'
+    if not done:
         _audit('power_' + action, d['name'], 'still running after %ds' % START_WAIT)
         return ('%s: still in progress after %ds (%s). Check with vm_list in a moment; do not repeat the call.'
                 % (action, START_WAIT, 'VMware is probably opening its window or showing a question'
                    if action == 'start' else 'the guest is still shutting down / restarting'))
-    outf.seek(0)
-    out = outf.read().decode('utf-8', 'replace').strip()
-    outf.close()
-    _ok(p.returncode, out, 'vmrun ' + action)
+    _ok(rc, out, 'vmrun ' + action)
     if action == 'start':
         time.sleep(3)
         if not _is_running(v, d['vmx']):
@@ -689,12 +701,32 @@ def _decode(b):
     return b.decode('latin-1', 'replace')
 
 
+def _guest_oem_cp(d):
+    """Console code page of the guest (437 on English Windows, 850 on Portuguese...), probed once and remembered."""
+    st = vm_state(d['vmx'])
+    if st.get('oem_cp'):
+        return st['oem_cp']
+    cp = None
+    try:
+        r = t_vm_run({'vm': d['vmx'], '_resolved': d, 'command': 'chcp', '_cp': 'ascii', 'timeout': 30})
+        m = re.search(r'(\d{3,5})\s*$', r.strip())
+        if m:
+            cp = 'cp' + m.group(1)
+            ''.encode(cp)          # Python knows this code page?
+    except (RuntimeError, ValueError, OSError, LookupError, subprocess.TimeoutExpired):
+        cp = None
+    if cp:
+        set_vm_state(d['vmx'], oem_cp=cp)
+    return cp or 'cp1252'
+
+
 def t_vm_run(a):
     """Run a cmd or PowerShell script in the guest and return its output."""
     v = VmRun()
     d = a.get('_resolved') or resolve_vm(v.cfg, a.get('vm'))
     shell = a.get('shell', 'cmd')
     script = a['command']
+    cp = a.get('encoding') or a.get('_cp') or (None if shell == 'powershell' else _guest_oem_cp(d))
     _audit('run:' + shell, d['name'], script.strip().splitlines()[0][:200] if script.strip() else '')
     timeout = int(a.get('timeout', 120))
     tmp = d.get('guest_temp', 'C:\\Windows\\Temp').rstrip('\\')
@@ -705,7 +737,8 @@ def t_vm_run(a):
         if shell == 'powershell':
             ps_local = os.path.join(td, rid + '.ps1')
             with open(ps_local, 'w', encoding='utf-8-sig', newline='\r\n') as f:
-                f.write(script)
+                # answer in UTF-8 whatever the guest's console code page (keeps accents intact)
+                f.write('try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}\n' + script)
             g_ps = '%s\\%s.ps1' % (tmp, rid)
             _ok(*v.run(['copyFileFromHostToGuest', d['vmx'], ps_local, g_ps], d, True), what='copy script')
             g_files.append(g_ps)
@@ -715,7 +748,7 @@ def t_vm_run(a):
             inner_local = os.path.join(td, rid + '.inner.cmd')
             with open(inner_local, 'wb') as f:
                 f.write(('@echo off\r\n' + script.replace('\r\n', '\n').replace('\n', '\r\n') + '\r\n')
-                        .encode(a.get('encoding', 'cp1252'), 'replace'))
+                        .encode(cp, 'replace'))
             g_inner = '%s\\%s.inner.cmd' % (tmp, rid)
             _ok(*v.run(['copyFileFromHostToGuest', d['vmx'], inner_local, g_inner], d, True), what='copy script')
             g_files.append(g_inner)
@@ -732,8 +765,14 @@ def t_vm_run(a):
         if a.get('no_wait'):
             flags.append('-noWait')
         guest_cmd = d.get('guest_cmd', 'C:\\Windows\\System32\\cmd.exe')
-        rc, out = v.run(['runProgramInGuest', d['vmx']] + flags + [guest_cmd, '/c', g_cmd],
-                        d, True, timeout=timeout + 30)
+        wait = min(timeout, START_WAIT - 10)   # copies before/after also take time; stay inside ~60 s overall
+        try:
+            rc, out = v.run(['runProgramInGuest', d['vmx']] + flags + [guest_cmd, '/c', g_cmd],
+                            d, True, timeout=wait)
+        except subprocess.TimeoutExpired:
+            return ('still running in the guest after %ds (the command goes on). Its output is being written to %s - '
+                    'read it later with vm_run "type %s"; for long jobs use no_wait and poll the output file.'
+                    % (wait, g_out, g_out))
         exit_code = 0
         m = re.search(r'exit code:\s*(-?\d+)', out)
         if m:
@@ -751,8 +790,13 @@ def t_vm_run(a):
                     raw = f.read()
                 if raw.startswith(b'\xff\xfe'):
                     text = raw.decode('utf-16-le', 'replace')
+                elif shell == 'powershell':
+                    text = _decode(raw).lstrip('\ufeff')
                 else:
-                    text = _decode(raw)
+                    try:
+                        text = raw.decode(cp)
+                    except (UnicodeDecodeError, LookupError):
+                        text = _decode(raw)
                 g_files.append(g_out)
             else:
                 text = '(no output file: %s)' % o2
@@ -1034,6 +1078,15 @@ def t_vm_manage(a):
         raise RuntimeError('The VM is powered off but still locked (%s.lck exists): it is probably open in a '
                            'VMware Workstation tab. Ask the user to close that tab (or VMware), then call again. '
                            'Nothing was deleted.' % d['vmx'])
+    if act == 'install_tools':
+        done, rc, out = _run_bounded(v, args)
+        _audit(args[0], d['name'], 'finished' if done else 'still running after %ds' % START_WAIT)
+        if done:
+            return _ok(rc, out, args[0]) or 'install_tools: OK'
+        return ('install_tools: the VMware Tools ISO is mounted in the VM; vmrun keeps waiting for the installer, which '
+                'some guests do not start by themselves. Check vm_screenshot: if no installer window is open, run '
+                'D:\\setup64.exe /s /v"/qn REBOOT=R" (setup.exe on 32-bit; the CD letter may differ) through Win+R, '
+                'then wait for vm_guest_info to report Tools "running".')
     hw_before = _read_vmx(d['vmx']).get('virtualhw.version')
     r = _ok(*v.run(args, timeout=3600), what=args[0])
     _audit(args[0], d['name'], ' '.join(args[2:]))

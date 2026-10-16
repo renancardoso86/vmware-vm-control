@@ -6,6 +6,8 @@ Windows Credential Manager (CredWriteW, generic credential). Claude never sees
 the password. Other hosts: environment variable or config file (see README).
 """
 import os
+import threading
+import time
 
 IS_WIN = os.name == 'nt'
 PREFIX = 'vmware-vm-control:'
@@ -89,6 +91,28 @@ def delete(vmx):
     return False
 
 
+def _bring_to_front_when_open(caption, seconds=20):
+    """The dialog belongs to a background process (the MCP server), so Windows opens it BEHIND the user's windows.
+    Watch for it and bring it to the foreground (the Alt tap lifts the foreground lock)."""
+    stop = threading.Event()
+
+    def watch():
+        u32 = ctypes.windll.user32
+        end = time.time() + seconds
+        while not stop.is_set() and time.time() < end:
+            h = u32.FindWindowW(None, caption)
+            if h:
+                u32.keybd_event(0x12, 0, 0, 0)
+                u32.keybd_event(0x12, 0, 2, 0)
+                u32.ShowWindow(h, 9)
+                u32.BringWindowToTop(h)
+                if u32.SetForegroundWindow(h) and u32.GetForegroundWindow() == h:
+                    return
+            time.sleep(0.25)
+    threading.Thread(target=watch, daemon=True).start()
+    return stop
+
+
 def prompt(vmx, vm_label, user_hint='', auth_error=0):
     """Show the native Windows credential dialog. Returns (user, password) or (None, None) if cancelled."""
     if not IS_WIN:
@@ -104,8 +128,12 @@ def prompt(vmx, vm_label, user_hint='', auth_error=0):
     pwd = ctypes.create_unicode_buffer(257)
     save = wintypes.BOOL(False)
     flags = 0x40000 | 0x80 | 0x2  # GENERIC_CREDENTIALS | ALWAYS_SHOW_UI | DO_NOT_PERSIST (we persist ourselves)
-    rc = _credui.CredUIPromptForCredentialsW(ctypes.byref(info), 'VM: ' + vm_label, None, auth_error,
-                                              user, 514, pwd, 257, ctypes.byref(save), flags)
+    stop = _bring_to_front_when_open(info.pszCaptionText)
+    try:
+        rc = _credui.CredUIPromptForCredentialsW(ctypes.byref(info), 'VM: ' + vm_label, None, auth_error,
+                                                  user, 514, pwd, 257, ctypes.byref(save), flags)
+    finally:
+        stop.set()
     if rc == 1223:  # ERROR_CANCELLED
         return None, None
     if rc != 0:

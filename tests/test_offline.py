@@ -350,6 +350,20 @@ class ServerTest(unittest.TestCase):
         self.assertLess(time.time() - t0, 8)
         self.assertIn('still in progress', out)
 
+    def test_guest_console_code_page_is_probed_once(self):
+        m = self.m
+        calls = []
+        real = m.t_vm_run
+        m.t_vm_run = lambda a: calls.append(a) or 'P\xe1gina de c\xf3digo ativa: 850'
+        try:
+            d = {'vmx': self.vmx, 'name': 'xp'}
+            self.assertEqual(m._guest_oem_cp(d), 'cp850')
+            self.assertEqual(m._guest_oem_cp(d), 'cp850')      # remembered in state.json
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]['command'], 'chcp')
+        finally:
+            m.t_vm_run = real
+
     def test_mcp_handshake(self):
         p = subprocess.run([sys.executable, os.path.join(SERVER, 'vm_control.py')],
                            input=b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'

@@ -47,6 +47,8 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 |---|---|---|
 | Win 7 SP1 Pro (ABNT2, Tools 12, VMnet2 host-only) | VNC screen incl. boot, click, keys, ABNT2 typing, cmd, PS 2.0, copy, Tools/IP, credential dialog | first layout detection missed the `d0010416` substitute -> fixed 0.3.1 |
 | Win XP Pro SP1 (setup only, no VMware Tools) - 2026-10-16, plugin 0.4.0 test build | `vm_create` XP preset (IDE disk seen as "atapi", CD boot, NAT, VNC 127.0.0.1:5903 auto-picked); VNC from first boot second incl. text-mode setup; keys (Enter, F8, arrows with repeat), clicks on lists/tabs/combos, typing; regional = Portuguese (Brazil) + ABNT2 set in setup; `vm_guest_info` / `vm_prepare` without Tools | stopped at product key (no XP licence); `vm_run` not run (would have opened the credential dialog -> fixed); `deleteVM` refused while the VM tab was open in Workstation -> clear message + cleanup of plugin backups added |
+| Win Server 2008 R2 Std - 0.4.3 test build 2026-10-16 | PowerShell 2.0 output with accents intact (UTF-8); cmd on cp437: ç é ü intact, `ã` -> `?` (not in 437); a 60 s command answered at 30 s and kept running in the guest (output file complete afterwards); credential dialog came to the front and was typed by Renan; install_tools answered within 40 s with instructions | - |
+| Win Server 2019 Std Evaluation (Desktop Experience) created by `vm_create` preset 2019 - 2026-10-16, plugin 0.4.2 | Setup saw the SATA disk (adapter lsilogic on sata0:0) and the e1000e NIC (Intel 82574L, DHCP over NAT) without drivers; whole install through VNC (edition, licence, disk, Administrator password, Ctrl+Alt+Del, logon); region zoom read the progress; Tools installed; vm_run PowerShell 5.1 elevated (High Mandatory Level); copy, processes; layout detected "us" | credential dialog opened behind other windows; accents lost (cmd cp437 / PowerShell console encoding); first PowerShell run > 60 s; install_tools > 60 s (vmrun waits for an installer Server does not autostart) -> 0.4.3 |
 | Win Server 2008 R2 Std - 0.4.2 test build 2026-10-16 | `reset soft` answered in 40 s with "still in progress"; screenshot of a suspended VM explains it and how to resume | - |
 | Win Server 2008 R2 Std on **VMware Player 17.5.1** (the vmplayer.exe shipped with Workstation) - 2026-10-16 | power start/stop, vm_run, vm_files, vm_processes, guest_info; snapshot refused with a clear message | **no VNC server on Player** (vmware.log: no "Started VNC server"; port closed) -> no mouse/keyboard; captureScreen fallback works with the stored login after the 0.4.2 fix; typeKeystrokesInGuest refused like on Workstation |
 | Win Server 2008 R2 Std + linked clone - real-use round 2026-10-16 | two VMs at once on 5902/5903; VNC reconnects after a guest restart (640x480 during boot -> 1920x1080) and after suspend/resume; captureScreen fallback with VNC off (stored login) | `reset soft` blocked > 60 s waiting for the guest; suspended VM gave a generic VNC error -> 0.4.2 |
@@ -71,14 +73,17 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 - The bridge drops a tool parameter called `device` (it uses that name itself); never name a parameter `device`.
 - `vmrun setPortForwarding` and `typeKeystrokesInGuest` fail from the Claude app on Renan's PC ("Failed to set port forwarding", "Insufficient permissions in the host operating system"); likely needs administrator rights (a levantar).
 - Copying the repo to OneDrive: use `git -c core.autocrlf=false archive` from the tag - a clone on Windows converts line endings and a robocopy also takes `__pycache__`.
-- Not yet verified on real hardware: `vm_create` SATA presets (disk created with adapter `lsilogic`, attached to `sata0:0`).
+- `vm_create` SATA presets verified on Server 2019 (2026-10-16): disk with adapter `lsilogic` on `sata0:0` works without drivers.
+- The Claude app can run two instances of the plugin server at the same time (seen after reconnections); each keeps its own state in memory.
+- Windows dialogs opened by the plugin server (credential prompt) appear behind the user's windows unless brought to the front (done in 0.4.3).
+- Copying a 5.6 GB ISO from the SharePoint sync folder took about 10 minutes (~13 MB/s download).
 
 ## Backlog (next)
 
 1. ~~Test on VMware Player~~ - done 2026-10-16: Player has no VNC; view-only + commands/files (0.4.2). Standalone Player install on another PC: a levantar.
 2. Test on a **Windows XP / Server 2003** guest with legacy VMware Tools 10.0.12 - blocked: needs an XP/2003 licence (XP SP1 ISO exists in `Instaladores\ISO`; whether Tools 10.0.12 accepts SP1: a levantar).
 3. ~~Test with VMware Tools missing~~ - done 2026-10-16 (XP setup, Tools precheck, captureScreen fallback with VNC off).
-3a. Test a `vm_create` SATA preset (Windows 7 or later) on real hardware.
+3a. ~~Test a `vm_create` SATA preset~~ - done 2026-10-16 with the Server 2019 evaluation ISO.
 4. More keyboard layouts (US-International, Spanish, German, Portuguese-PT) - table + detection.
 5. Linux / macOS host: `.mcp.json` variant or launcher that picks `python3`; credentials via keyring or env.
 6. (done in repo) Release workflow builds `vmware-vm-control.plugin` on every `v*` tag.
