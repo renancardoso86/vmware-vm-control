@@ -6,6 +6,13 @@ Upload this file to the Claude project "vmware-vm-control". It is the hand-off o
 
 A plugin that lets Claude operate and configure **any VMware Workstation / Player VM, any Windows guest from XP onward (incl. Server 2003-2025)**, usable by any professional - not tied to one VMware version, one VMware Tools version or one machine. Owner: Renan Cardoso - Dominio Automacao. Licence MIT. Public repo: `github.com/renancardoso86/vmware-vm-control`.
 
+## Status (end of session 2026-10-16)
+
+- Latest release: **v0.4.4** (tag `v0.4.4`, commit `88420dc`; release asset `vmware-vm-control.plugin`, 56,242 bytes, sha256 starting `d27d5ee9`). OneDrive copy identical to the tag (25 files, no `__pycache__`, `dist\` holds only `vmware-vm-control-0.4.4.plugin`).
+- Renan installed the 0.4.4 package and restarted the app; after the restart `vm_list` answered (Workstation 17.5, vmrun 1.17.0). The installed version number itself was not read back: a levantar (`vm_list` does not print it).
+- VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us) and `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login. Test VMs (WinXP-Test, Server 2019, linked clone) were deleted; `state.json` cleaned (`_created` = []).
+- Next session: pick from the backlog below (admin-rights test for NAT/Tools typing, more layouts, Linux/macOS host).
+
 ## Decisions (with the reason)
 
 | Decision | Why |
@@ -77,6 +84,8 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 - `vm_create` SATA presets verified on Server 2019 (2026-10-16): disk with adapter `lsilogic` on `sata0:0` works without drivers.
 - The Claude app can run two instances of the plugin server at the same time (seen after reconnections); each keeps its own state in memory.
 - Windows dialogs opened by the plugin server (credential prompt) appear behind the user's windows unless brought to the front (done in 0.4.3).
+- Right after the app restarts (e.g. after installing a plugin), the cloud session briefly loses the bridge tools; they come back once the app is open and online.
+- Consider printing `SERVER_VERSION` in `vm_list` so the installed version can be checked without reading files on the PC.
 - Copying a 5.6 GB ISO from the SharePoint sync folder took about 10 minutes (~13 MB/s download).
 
 ## Backlog (next)
