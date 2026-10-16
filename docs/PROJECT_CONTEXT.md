@@ -63,6 +63,14 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 7. Optional: `vm_wait_for` (wait until text/region changes or a process appears) to avoid fixed sleeps.
 8. Optional: OCR-free screen diff to detect when a dialog opened.
 
+## Source of truth and release flow
+
+- **GitHub (`renancardoso86/vmware-vm-control`) is the source of truth.** The OneDrive folder `C:\Users\RenanCardoso\OneDrive\Documentos\Pessoal\Claude\vmware-vm-control` is a plain copy (no `.git`, never sync a `.git` folder through OneDrive).
+- Cloud sessions can read the repo but cannot push to it. Changes are pushed **from Renan's PC** with his `gh`/`git` (already logged in as `renancardoso86`), only after he approves: clone or update a working copy in `%TEMP%`, apply changes, run the tests, commit, `git push`, then `git tag vX.Y.Z` + `git push origin vX.Y.Z`.
+- A `v*` tag triggers the release workflow: tests run and `vmware-vm-control.plugin` is attached to the GitHub release automatically.
+- **After every release, update the OneDrive copy** (whole repo tree without `.git`, plus `dist\vmware-vm-control-X.Y.Z.plugin`) so the folder always matches the latest release.
+- Install/update on Renan's PC: install the new `.plugin`, then restart the Claude app (otherwise the old server and tool list stay loaded).
+
 ## Working rules for Claude in this project
 
 - Talk to Renan in Portuguese; explain technical terms; he decides point by point - offer options, not closed recommendations.
