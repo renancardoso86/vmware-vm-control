@@ -17,6 +17,10 @@ No configuration file is needed. VMs are discovered from VMware's own library / 
 4. Before calling `vm_prepare` with credentials missing, tell the user in one sentence that a Windows login window for the VM will appear and they should type the VM's Windows user and password there.
 5. Report what is ready (screen/mouse/keyboard, commands/files, layout) and what is missing.
 
+## Creating a new VM
+
+When the user wants a new VM, agree with them on name, guest preset, install ISO, parent folder, memory, disk size and network, then call `vm_create` (VMware Workstation; Player has no `vmware-vdiskmanager`). It never overwrites an existing folder and leaves the VM powered off with VNC already secured, so no `vm_prepare` restart is needed. Ask before `vm_power start`; follow the installer with `vm_screenshot`. The user types product keys and passwords themselves. VMware Tools are installed after the guest OS (XP / 2003: legacy 10.0.12).
+
 ## When something is missing
 
 - **VMware Tools not running**: screen, mouse and keyboard still work. For commands/files: `vm_manage` `install_tools`, then finish the installer through the GUI. XP / 2003 / 2000 need the legacy Tools 10.0.12 (`winPreVista.iso`); Windows 7 needs KB4474419 + KB4490628 before Tools 11+.

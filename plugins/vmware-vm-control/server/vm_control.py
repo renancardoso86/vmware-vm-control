@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.3.2'
+SERVER_VERSION = '0.4.0'
 IS_WIN = os.name == 'nt'
 
 
@@ -154,7 +154,7 @@ def discover_vms(extra_paths=()):
             m = re.match(r'(pref\.mruVM\d+)\.filename$', k, re.I)
             if m:
                 add(val, kv.get(m.group(1) + '.displayName', ''))
-    for p in extra_paths:
+    for p in list(extra_paths) + list(load_state().get('_created', [])):
         add(p)
     return found
 
@@ -270,6 +270,7 @@ class VmRun:
         self.path = find_vmrun(self.cfg)
         self.type = host_type(self.cfg, self.path)
         self.version, self.commands = self._capabilities()
+        self._tools_ok = set()
 
     def _capabilities(self):
         """Discover what THIS vmrun supports (any VMware version) by parsing its help text."""
@@ -301,7 +302,25 @@ class VmRun:
             raise RuntimeError('This vmrun (version %s, host type %s) does not support "%s".%s' % (
                 self.version, self.type, command, (' Alternative: ' + alternative) if alternative else ''))
 
+    def need_tools(self, d):
+        """Fail fast, before any credential prompt, when VMware Tools are not running in the guest."""
+        vmx = d['vmx']
+        if vmx in self._tools_ok or not self.has('checkToolsState'):
+            return
+        p = subprocess.run([self.path, '-T', self.type, 'checkToolsState', vmx], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=60,
+                           **({'creationflags': 0x08000000} if IS_WIN else {}))
+        state = p.stdout.decode('utf-8', 'replace').strip()
+        if 'running' not in state.lower():
+            raise RuntimeError('VMware Tools are not running in VM "%s" (state: %s). Commands, files and processes '
+                               'need them; screen, mouse and keyboard work without them. Install them with vm_manage '
+                               'install_tools (XP/2003: legacy Tools 10.0.12) or wait until the guest has booted.'
+                               % (d['name'], state or 'unknown'))
+        self._tools_ok.add(vmx)
+
     def run(self, args, d=None, guest=False, timeout=120):
+        if guest:
+            self.need_tools(d)
         if args and args[0] != 'list':
             self.need(args[0], ALTERNATIVES.get(args[0].lower(), ''))
         cmd = [self.path, '-T', self.type]
@@ -911,9 +930,47 @@ def t_vm_manage(a):
         args = ['deleteVM', d['vmx']]
     else:
         raise ValueError('action must be install_tools, upgrade_hardware, clone or delete_vm')
+    if act == 'delete_vm' and os.path.isdir(d['vmx'] + '.lck'):
+        if _is_running(v, d['vmx']):
+            raise RuntimeError('The VM is running. Shut it down first (vm_power stop), then delete it.')
+        raise RuntimeError('The VM is powered off but still locked (%s.lck exists): it is probably open in a '
+                           'VMware Workstation tab. Ask the user to close that tab (or VMware), then call again. '
+                           'Nothing was deleted.' % d['vmx'])
     r = _ok(*v.run(args, timeout=3600), what=args[0])
     _audit(args[0], d['name'], ' '.join(args[2:]))
+    if act == 'delete_vm':
+        r = (r or 'delete_vm: OK') + _cleanup_deleted(d['vmx'])
     return r or '%s: OK' % act
+
+
+def _cleanup_deleted(vmx):
+    """After vmrun deleteVM: remove the plugin's own .vmx backups, the folder if now empty, and the state entry."""
+    notes = []
+    folder = os.path.dirname(os.path.abspath(vmx))
+    prefix = os.path.basename(vmx) + '.bak-vmctl-'
+    try:
+        for f in os.listdir(folder):
+            if f.startswith(prefix):
+                os.remove(os.path.join(folder, f))
+                notes.append('removed plugin backup ' + f)
+        if not os.listdir(folder):
+            os.rmdir(folder)
+            notes.append('removed empty folder ' + folder)
+        elif os.path.exists(folder):
+            notes.append('folder kept (other files remain): ' + folder)
+    except OSError as e:
+        notes.append('cleanup incomplete: %s' % e)
+    st = load_state()
+    key = os.path.normcase(os.path.abspath(vmx))
+    changed = st.pop(key, None) is not None
+    created = [c for c in st.get('_created', []) if os.path.normcase(os.path.abspath(c)) != key]
+    if created != st.get('_created', []):
+        st['_created'] = created
+        changed = True
+    if changed:
+        save_state(st)
+    _audit('delete_cleanup', os.path.basename(vmx), '; '.join(notes) or 'nothing left')
+    return ('\n' + '\n'.join(notes)) if notes else ''
 
 
 def t_vm_host_network(a):
@@ -980,6 +1037,180 @@ def t_vm_network(a):
         return t_vm_settings({'vm': a.get('vm'), 'action': 'remove', 'remove': keys})
     raise ValueError('action must be list, set or remove')
 
+
+
+# ------------------------------------------------------------- new VM
+# guest presets: VMware guestOS id, disk bus, NIC model (None = VMware default, i.e. vlance/PCnet which XP/2003
+# have in-box), memory MB, disk GB. Vista+ ship AHCI and Intel PRO/1000 drivers; 8/2012+ ship e1000e.
+GUEST_PRESETS = {
+    'xp':        ('winxppro', 'ide', None, 512, 20),
+    'xp-64':     ('winxppro-64', 'ide', 'e1000', 1024, 20),
+    '2003':      ('winnetstandard', 'ide', None, 512, 20),
+    '2003-ent':  ('winnetenterprise', 'ide', None, 1024, 20),
+    '2003-64':   ('winnetstandard-64', 'ide', 'e1000', 1024, 20),
+    'vista':     ('winvista', 'sata', 'e1000', 1024, 40),
+    '7':         ('windows7', 'sata', 'e1000', 2048, 60),
+    '7-64':      ('windows7-64', 'sata', 'e1000', 2048, 60),
+    '2008':      ('longhorn', 'sata', 'e1000', 2048, 40),
+    '2008r2':    ('windows7srv-64', 'sata', 'e1000', 2048, 60),
+    '8-64':      ('windows8-64', 'sata', 'e1000e', 2048, 60),
+    '2012':      ('windows8srv-64', 'sata', 'e1000e', 4096, 60),
+    '10':        ('windows9', 'sata', 'e1000e', 2048, 60),
+    '10-64':     ('windows9-64', 'sata', 'e1000e', 4096, 60),
+    '2016':      ('windows9srv-64', 'sata', 'e1000e', 4096, 60),
+    '2019':      ('windows2019srv-64', 'sata', 'e1000e', 4096, 60),
+    '2022':      ('windows2019srvNext-64', 'sata', 'e1000e', 4096, 60),
+    '2025':      ('windows2022srvNext-64', 'sata', 'e1000e', 4096, 60),
+}
+# Only mappings checked on real hardware (vmrun 1.17.0 ships with Workstation 17.x -> hardware 20 runs on 17.0+).
+VMRUN_TO_HW = {'1.17': 20}
+
+
+def find_vdiskmanager(cfg, vmrun):
+    cand = [cfg.get('vdiskmanager_path', ''), os.environ.get('VDISKMANAGER_PATH', '')]
+    d = os.path.dirname(vmrun)
+    cand += [os.path.join(d, 'vmware-vdiskmanager.exe' if IS_WIN else 'vmware-vdiskmanager')]
+    if not IS_WIN:
+        cand += ['/usr/bin/vmware-vdiskmanager', '/Applications/VMware Fusion.app/Contents/Library/vmware-vdiskmanager']
+    for c in cand:
+        if c and os.path.exists(c):
+            return c
+    raise RuntimeError('vmware-vdiskmanager not found next to %s (VMware Player does not ship it). Create the VM in '
+                       'the VMware "New Virtual Machine" wizard instead, or set "vdiskmanager_path" in %s.'
+                       % (vmrun, config_path()))
+
+
+def default_vm_folder():
+    """VMware's own default VM folder (Workstation preferences), else ~/Documents/Virtual Machines."""
+    for src in inventory_sources():
+        p = _parse_kv(src).get('prefvmx.defaultVMPath')
+        if p:
+            return p
+    return os.path.join(os.path.expanduser('~'), 'Documents', 'Virtual Machines')
+
+
+def _hardware_version(v, a):
+    if a.get('hardware_version'):
+        return int(a['hardware_version']), 'given'
+    m = re.match(r'(\d+\.\d+)', v.version or '')
+    if m and m.group(1) in VMRUN_TO_HW:
+        return VMRUN_TO_HW[m.group(1)], 'vmrun %s' % v.version
+    hw = []
+    for c in discover_vms():
+        try:
+            hw.append(int(_read_vmx(c['vmx']).get('virtualhw.version', '0')))
+        except ValueError:
+            pass
+    if hw and max(hw) > 0:
+        return max(hw), 'highest version among the VMs already on this host'
+    raise RuntimeError('Cannot tell which virtual hardware version this VMware (vmrun %s) supports. Pass '
+                       'hardware_version (e.g. 20 for Workstation 17, 19 for 16.2, 16 for 15).' % v.version)
+
+
+def build_vmx(name, preset, a, hw, vnc_port, vnc_password, disk_file):
+    """Lines of a new .vmx (UTF-8)."""
+    guestos, bus, nic, mem, _ = preset
+    mem = int(a.get('memory_mb') or mem)
+    cpus = int(a.get('cpus') or 1)
+    q = lambda k, val: '%s = "%s"' % (k, val)  # noqa: E731
+    L = [q('.encoding', 'UTF-8'), q('config.version', '8'), q('virtualHW.version', hw),
+         q('displayName', name), q('guestOS', a.get('guest_os_id') or guestos),
+         q('memsize', mem), q('numvcpus', cpus), q('cpuid.coresPerSocket', 1)]
+    if a.get('firmware', 'bios') == 'efi':
+        L.append(q('firmware', 'efi'))
+    if bus == 'ide':
+        L += [q('ide0:0.present', 'TRUE'), q('ide0:0.fileName', disk_file)]
+        cd = 'ide1:0'
+    else:
+        L += [q('sata0.present', 'TRUE'), q('sata0:0.present', 'TRUE'), q('sata0:0.fileName', disk_file)]
+        cd = 'sata0:1'
+    iso = a.get('iso')
+    L += [q(cd + '.present', 'TRUE'), q(cd + '.deviceType', 'cdrom-image' if iso else 'atapi-cdrom'),
+          q(cd + '.fileName', iso if iso else 'auto detect'), q(cd + '.startConnected', 'TRUE' if iso else 'FALSE'),
+          q(cd + '.autodetect', 'FALSE' if iso else 'TRUE')]
+    net = a.get('network', 'nat')
+    if net != 'none':
+        L += [q('ethernet0.present', 'TRUE'), q('ethernet0.connectionType', net),
+              q('ethernet0.addressType', 'generated'), q('ethernet0.startConnected', 'TRUE')]
+        if net == 'custom':
+            if not a.get('vnet'):
+                raise ValueError('network "custom" needs vnet, e.g. "VMnet2"')
+            L.append(q('ethernet0.vnet', a['vnet']))
+        if a.get('nic') or nic:
+            L.append(q('ethernet0.virtualDev', a.get('nic') or nic))
+    L += [q('floppy0.present', 'FALSE'), q('usb.present', 'TRUE'), q('ehci.present', 'TRUE'),
+          q('pciBridge0.present', 'TRUE'), q('pciBridge4.present', 'TRUE'), q('pciBridge4.virtualDev', 'pcieRootPort'),
+          q('pciBridge4.functions', '8'), q('vmci0.present', 'TRUE'), q('hpet0.present', 'TRUE'),
+          q('svga.autodetect', 'TRUE'), q('tools.syncTime', 'TRUE'), q('tools.upgrade.policy', 'manual'),
+          q('RemoteDisplay.vnc.enabled', 'TRUE'), q('RemoteDisplay.vnc.port', vnc_port),
+          q('RemoteDisplay.vnc.ip', '127.0.0.1'), q('RemoteDisplay.vnc.password', vnc_password)]
+    if a.get('sound'):
+        L += [q('sound.present', 'TRUE'), q('sound.autodetect', 'TRUE'), q('sound.fileName', '-1')]
+    return L
+
+
+def t_vm_create(a):
+    """Create a new, powered-off VM: folder, growable virtual disk (vmware-vdiskmanager) and .vmx with secure VNC."""
+    v = VmRun()
+    name = (a.get('name') or '').strip()
+    if not name or re.search(r'[\\/:*?"<>|]', name):
+        raise ValueError('"name" is required and cannot contain \\ / : * ? " < > |')
+    key = (a.get('guest') or '').lower()
+    if key not in GUEST_PRESETS:
+        raise ValueError('guest must be one of: %s (Windows 11 needs TPM + encryption: use the VMware wizard)'
+                         % ', '.join(GUEST_PRESETS))
+    preset = GUEST_PRESETS[key]
+    if a.get('disk_bus'):
+        preset = preset[:1] + (a['disk_bus'],) + preset[2:]
+    if preset[1] not in ('ide', 'sata'):
+        raise ValueError('disk_bus must be ide or sata')
+    iso = a.get('iso')
+    if iso and not os.path.isfile(iso):
+        raise ValueError('ISO not found: %s' % iso)
+    if a.get('network', 'nat') not in ('nat', 'bridged', 'hostonly', 'custom', 'none'):
+        raise ValueError('network must be nat, bridged, hostonly, custom or none')
+    folder = os.path.join(a.get('folder') or default_vm_folder(), name)
+    vmx = os.path.join(folder, name + '.vmx')
+    if os.path.exists(folder) and os.listdir(folder):
+        raise RuntimeError('Folder already exists and is not empty: %s - nothing was changed. Choose another name '
+                           'or folder.' % folder)
+    disk_gb = int(a.get('disk_gb') or preset[4])
+    hw, hw_src = _hardware_version(v, a)
+    vdm = find_vdiskmanager(v.cfg, v.path)
+    port = _pick_vnc_port(vmx)
+    pw = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+    disk_file = name + '.vmdk'
+    os.makedirs(folder, exist_ok=True)
+    kw = {'creationflags': 0x08000000} if IS_WIN else {}
+    # -t 0 = growable single file: only uses the space the guest writes
+    p = subprocess.run([vdm, '-c', '-s', '%dGB' % disk_gb, '-a', 'ide' if preset[1] == 'ide' else 'lsilogic',
+                        '-t', '0', os.path.join(folder, disk_file)],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=600, cwd=folder, **kw)
+    out = p.stdout.decode('utf-8', 'replace').strip()
+    if p.returncode != 0 or not os.path.exists(os.path.join(folder, disk_file)):
+        raise RuntimeError('vmware-vdiskmanager failed (exit %s): %s. Folder %s was left for inspection.'
+                           % (p.returncode, out or 'no output', folder))
+    lines = build_vmx(name, preset, a, hw, port, pw, disk_file)
+    with open(vmx, 'w', encoding='utf-8', newline='') as f:
+        f.write('\r\n'.join(lines) + '\r\n' if IS_WIN else '\n'.join(lines) + '\n')
+    st = load_state()
+    created = st.setdefault('_created', [])
+    if vmx not in created:
+        created.append(vmx)
+    save_state(st)
+    _audit('create', name, 'vmx=%s guest=%s hw=%s mem=%s cpus=%s disk=%sGB bus=%s net=%s iso=%s vnc=127.0.0.1:%s' % (
+        vmx, key, hw, a.get('memory_mb') or preset[3], a.get('cpus') or 1, disk_gb, preset[1],
+        a.get('network', 'nat'), iso or '-', port))
+    return ['Created VM "%s" (powered off).' % name, '.vmx: %s' % vmx,
+            'Guest OS: %s (%s) | hardware version %s (%s)' % (key, a.get('guest_os_id') or preset[0], hw, hw_src),
+            'Memory %s MB | %s vCPU | disk %d GB growable on %s | network %s%s' % (
+                a.get('memory_mb') or preset[3], a.get('cpus') or 1, disk_gb, preset[1].upper(),
+                a.get('network', 'nat'), (' (%s)' % (a.get('nic') or preset[2])) if (a.get('nic') or preset[2]) else ''),
+            'CD/DVD: %s' % (iso or 'empty (attach an ISO with vm_settings)'),
+            'VNC: 127.0.0.1:%d with a random password (ready at first power-on)' % port,
+            'vdiskmanager: %s' % (out.splitlines()[-1] if out else 'OK'),
+            'Next: ask the user, then vm_power start; watch the installer with vm_screenshot. Opening the VM in '
+            'VMware adds it to the library. VMware Tools are not installed yet (XP/2003: legacy 10.0.12).']
 
 
 # ------------------------------------------------------------- one-call preparation
@@ -1278,6 +1509,23 @@ TOOLS = [
         'vnet': {'type': 'string', 'description': 'for custom, e.g. VMnet2'},
         'virtual_device': {'type': 'string', 'description': 'e.g. e1000, e1000e, vmxnet3, vlance (XP: vlance/e1000)'},
         'start_connected': {'type': 'boolean'}}, ['vm']), t_vm_network),
+    ('vm_create', 'Create a NEW powered-off VM (Workstation): folder, growable virtual disk, .vmx with guest OS '
+     'preset (disk bus and network card the guest supports out of the box), optional install ISO, network, and '
+     'VMware VNC already bound to 127.0.0.1 with a random password. Ask the user before calling; it never '
+     'overwrites an existing folder and does not power the VM on.',
+     S({'name': {'type': 'string', 'description': 'VM name (also folder and file name)'},
+        'guest': {'type': 'string', 'enum': list(GUEST_PRESETS)},
+        'iso': {'type': 'string', 'description': 'Install ISO on the host'},
+        'folder': {'type': 'string', 'description': 'Parent folder (default: VMware default VM folder)'},
+        'memory_mb': {'type': 'integer'}, 'cpus': {'type': 'integer'}, 'disk_gb': {'type': 'integer'},
+        'network': {'type': 'string', 'enum': ['nat', 'bridged', 'hostonly', 'custom', 'none']},
+        'vnet': {'type': 'string', 'description': 'for custom, e.g. VMnet2'},
+        'nic': {'type': 'string', 'description': 'override NIC model: vlance, e1000, e1000e, vmxnet3'},
+        'disk_bus': {'type': 'string', 'enum': ['ide', 'sata']},
+        'firmware': {'type': 'string', 'enum': ['bios', 'efi']},
+        'hardware_version': {'type': 'integer', 'description': 'override; default from the installed VMware'},
+        'guest_os_id': {'type': 'string', 'description': 'override the VMware guestOS id'},
+        'sound': {'type': 'boolean'}}, ['name', 'guest']), t_vm_create),
     ('vm_vnc_configure', 'Enable or disable VMware\'s embedded VNC server in a POWERED-OFF VM\'s .vmx (backup made).',
      S({'vm': VM, 'enable': {'type': 'boolean'}, 'port': {'type': 'integer', 'description': '5901-6001'}},
        ['vm']), t_vm_vnc_configure),

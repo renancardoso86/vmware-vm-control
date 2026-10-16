@@ -39,6 +39,7 @@ The plugin does not target one VMware or VMware Tools release:
 | `vm_device` | Connect / disconnect a device while the VM runs (network, CD, serial, USB, sound) |
 | `vm_shared_folders`, `vm_variable` | Shared folders; runtime config, guest environment and guest variables |
 | `vm_guest_info`, `vm_manage`, `vm_host_network` | Tools state, IP, hardware version; install Tools, upgrade hardware, clone, delete (confirmed); NAT port forwarding |
+| `vm_create` | Create a new powered-off VM (Workstation): disk, .vmx from a guest preset XP-2025, install ISO, network, secure VNC |
 | `vm_vnc_configure` | Enable/disable VMware's VNC in a powered-off VM's .vmx (makes a backup) |
 
 Guest OS settings (IP, firewall, RDP, users, services, registry, silent installs) go through `vm_run`; the **vm-configure** skill carries version-specific recipes from XP to 11.

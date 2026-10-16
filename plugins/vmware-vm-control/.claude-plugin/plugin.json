@@ -1,6 +1,6 @@
 {
   "name": "vmware-vm-control",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Operate and configure VMware Workstation / Player virtual machines of any version from the host: screen, mouse and keyboard through VMware's embedded VNC; commands, files, processes, power, snapshots and every .vmx setting through vmrun. Detects what the installed VMware supports at runtime. Works with any Windows guest from XP onward - nothing modern runs inside the guest.",
   "author": {
     "name": "Renan Cardoso - Dominio Automacao"

@@ -22,6 +22,9 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 | `launch.cmd` copies server to `%USERPROFILE%\.vmware-vm-control\server` | Python from Microsoft Store / Python Install Manager is sandboxed and cannot read `%APPDATA%\Claude` |
 | Every change logged (`changes.log`, secrets masked) + timestamped `.vmx` backups | Traceability on customer/engineering VMs |
 | Text in English (plugin, README); conversation with Renan in Portuguese | Distribution to any professional |
+| `vm_create` (0.4.0) writes the `.vmx` itself + `vmware-vdiskmanager` disk, guest presets XP-2025 | Creating test VMs without the VMware wizard; XP/2003 get IDE disk + default PCnet NIC (in-box drivers), Vista+ SATA + e1000/e1000e; Windows 11 left to the wizard (TPM + encryption) |
+| Hardware version: only verified mappings (`vmrun 1.17` -> 20), else highest among existing VMs, else ask | Never guess; hw 20 also opens on Workstation 17.0 (Renan's existing VMs use 21) |
+| Guest operations check VMware Tools before asking for the login | Without Tools the credential dialog appeared for nothing (found in the XP test) |
 
 ## Architecture
 
@@ -43,6 +46,7 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 | Guest | Passed | Notes |
 |---|---|---|
 | Win 7 SP1 Pro (ABNT2, Tools 12, VMnet2 host-only) | VNC screen incl. boot, click, keys, ABNT2 typing, cmd, PS 2.0, copy, Tools/IP, credential dialog | first layout detection missed the `d0010416` substitute -> fixed 0.3.1 |
+| Win XP Pro SP1 (setup only, no VMware Tools) - 2026-10-16, plugin 0.4.0 test build | `vm_create` XP preset (IDE disk seen as "atapi", CD boot, NAT, VNC 127.0.0.1:5903 auto-picked); VNC from first boot second incl. text-mode setup; keys (Enter, F8, arrows with repeat), clicks on lists/tabs/combos, typing; regional = Portuguese (Brazil) + ABNT2 set in setup; `vm_guest_info` / `vm_prepare` without Tools | stopped at product key (no XP licence); `vm_run` not run (would have opened the credential dialog -> fixed); `deleteVM` refused while the VM tab was open in Workstation -> clear message + cleanup of plugin backups added |
 | Win Server 2008 R2 Std (US, 1920x1080, not activated) | free port 5902 chosen, resolution change, built-in Administrator elevated, cmd, PS 2.0 + ServerManager, copy, processes, adapters, US typing + Alt codes | wrong password detected/removed; typing blind (Run dialog not open) caused a logoff -> 0.3.2 safeguards |
 
 ## Known issues / lessons
@@ -51,12 +55,19 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 - Activation / "not genuine" pop-ups steal focus right after logon on unactivated Windows: always screenshot before typing.
 - `vm_power start` right after a shutdown may race; handled in 0.3.2 by waiting for the `.vmx.lck` folder to disappear.
 - Alt+0NNN fallback needs Num Lock on in the guest (not yet verified on a guest with Num Lock off).
+- Installing a test `.plugin` with the same name and version as the installed one is refused by the app ("A plugin named ... already exists"); test builds need a different version, or remove the installed plugin first (exact rule: a levantar).
+- `vmrun deleteVM` fails with "Insufficient permissions" while the powered-off VM is still open in a Workstation tab (`.vmx.lck` kept); close the tab first.
+- ISOs on the SharePoint/OneDrive sync folder may be cloud-only (attributes Offline + RecallOnDataAccess); copy them to a local folder before booting a VM from them.
+- No legitimate public product key exists for Windows XP; XP tests beyond setup need a real licence.
+- `vm_type` remembers the `layout` passed explicitly; after changing the guest layout, pass the new one or run `vm_prepare` with `redetect_layout` (needs Tools).
+- Not yet verified on real hardware: `vm_create` SATA presets (disk created with adapter `lsilogic`, attached to `sata0:0`).
 
 ## Backlog (next)
 
 1. Test on **VMware Player** (no snapshots; check guest operations and VNC via `.vmx`).
-2. Test on a **Windows XP / Server 2003** guest with legacy VMware Tools 10.0.12.
-3. Test with VMware Tools **missing** (VNC-only mode, `captureScreen` fallback).
+2. Test on a **Windows XP / Server 2003** guest with legacy VMware Tools 10.0.12 - blocked: needs an XP/2003 licence (XP SP1 ISO exists in `Instaladores\ISO`; whether Tools 10.0.12 accepts SP1: a levantar).
+3. Test with VMware Tools **missing** - mostly done 2026-10-16 (XP setup, see test matrix); left: `captureScreen` fallback with VNC off, and the 0.4.0 Tools precheck / delete cleanup on real hardware.
+3a. Test a `vm_create` SATA preset (Windows 7 or later) on real hardware.
 4. More keyboard layouts (US-International, Spanish, German, Portuguese-PT) - table + detection.
 5. Linux / macOS host: `.mcp.json` variant or launcher that picks `python3`; credentials via keyring or env.
 6. (done in repo) Release workflow builds `vmware-vm-control.plugin` on every `v*` tag.

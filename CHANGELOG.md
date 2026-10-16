@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 - 2026-10-15
+- New `vm_create`: creates a powered-off VM on Workstation - folder, growable disk (`vmware-vdiskmanager`), `.vmx` from a guest preset (XP to Server 2025: guestOS id, IDE disk + in-box PCnet NIC for XP/2003, SATA + e1000/e1000e for Vista and later), optional install ISO, network (NAT / bridged / host-only / VMnetX / none) and VMware VNC already on 127.0.0.1 with a random password. Never overwrites an existing folder; logged in `changes.log`.
+- VMs created by the plugin are listed by `vm_list` even before VMware adds them to its library.
+- Guest commands/files/processes check VMware Tools first and fail with a clear message, instead of opening the credential dialog for nothing when Tools are not running.
+- `vm_manage delete_vm` also removes the plugin's own `.vmx` backups, the folder when empty, and the VM's saved state (VMware's `deleteVM` leaves them).
+- `vm_manage delete_vm` explains when a powered-off VM is still locked by an open VMware Workstation tab (nothing deleted).
+- Tested: `vm_create` XP preset on Workstation 17.5 (IDE disk, CD boot, NAT); XP SP1 setup driven through VNC without VMware Tools (text-mode setup, keys, clicks, combo boxes, typing).
 ## 0.3.2 - 2026-10-15
 - Refuse symbols in `vm_type` when the guest keyboard layout is unknown (letters/digits/space/Enter still allowed).
 - `vm_power start` waits for a VM that is still powering off; warns if the VM does not appear as running.

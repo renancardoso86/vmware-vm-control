@@ -136,6 +136,7 @@ class ServerTest(unittest.TestCase):
         import importlib
         import vm_control
         self.m = importlib.reload(vm_control)
+        self.m.inventory_sources = lambda: []                       # tests never read the host's VMware library
 
     def tearDown(self):
         os.environ.pop('VMCTL_CONFIG', None)
@@ -162,6 +163,110 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(k['remotedisplay.vnc.ip'], '127.0.0.1')
         self.assertEqual(len(k['remotedisplay.vnc.password']), 8)
 
+    def _fake_vdiskmanager(self):
+        t = self.tmp.name
+        vdm = os.path.join(t, 'vdm.cmd' if os.name == 'nt' else 'vdm')
+        with open(vdm, 'w') as f:
+            if os.name == 'nt':
+                f.write('@echo off\r\ntype nul > "%~8"\r\necho Virtual disk creation successful.\r\n')
+            else:
+                f.write('#!/bin/sh\n: > "$8"\necho "Virtual disk creation successful."\n')
+        os.chmod(vdm, 0o755)
+        with open(self.cfg, 'w') as f:
+            json.dump({'vmrun_path': self.vmrun, 'host_type': 'ws', 'vdiskmanager_path': vdm}, f)
+
+    def test_create_xp_vm(self):
+        self._fake_vdiskmanager()
+        m = self.m
+        iso = os.path.join(self.tmp.name, 'xp.iso')
+        open(iso, 'wb').close()
+        parent = os.path.join(self.tmp.name, 'VMs')
+        rep = '\n'.join(m.t_vm_create({'name': 'XP Test', 'guest': 'xp', 'iso': iso, 'folder': parent,
+                                        'network': 'nat', 'hardware_version': 20}))
+        vmx = os.path.join(parent, 'XP Test', 'XP Test.vmx')
+        self.assertIn('Created VM', rep)
+        k = m._read_vmx(vmx)
+        self.assertEqual(k['guestos'], 'winxppro')
+        self.assertEqual(k['virtualhw.version'], '20')
+        self.assertEqual(k['ide0:0.filename'], 'XP Test.vmdk')     # XP has no SATA driver: IDE disk
+        self.assertEqual(k['ide1:0.filename'], iso)
+        self.assertEqual(k['ide1:0.devicetype'], 'cdrom-image')
+        self.assertEqual(k['ethernet0.connectiontype'], 'nat')
+        self.assertNotIn('ethernet0.virtualdev', k)                 # VMware default (PCnet) has an XP driver
+        self.assertEqual(k['remotedisplay.vnc.ip'], '127.0.0.1')
+        self.assertEqual(len(k['remotedisplay.vnc.password']), 8)
+        self.assertTrue(os.path.exists(os.path.join(parent, 'XP Test', 'XP Test.vmdk')))
+        self.assertIn(vmx, [c['vmx'] for c in m.discover_vms()])   # visible to vm_list without VMware library
+        log = open(os.path.join(os.path.dirname(self.cfg), 'changes.log'), encoding='utf-8').read()
+        self.assertNotIn(k['remotedisplay.vnc.password'], log)
+        with self.assertRaises(RuntimeError):                       # never overwrites
+            m.t_vm_create({'name': 'XP Test', 'guest': 'xp', 'folder': parent, 'hardware_version': 20})
+
+    def test_create_modern_vm_uses_sata_and_needs_hw_version(self):
+        self._fake_vdiskmanager()
+        m = self.m
+        parent = os.path.join(self.tmp.name, 'VMs')
+        m.inventory_sources = lambda: []                            # ignore the real VMware library on this host
+        with self.assertRaises(RuntimeError):                       # fake vmrun reports no version, no hw VMs
+            m.t_vm_create({'name': 'W10', 'guest': '10-64', 'folder': parent})
+        self.assertFalse(os.path.exists(os.path.join(parent, 'W10')))
+        m.t_vm_create({'name': 'W10', 'guest': '10-64', 'folder': parent, 'hardware_version': 20,
+                       'network': 'custom', 'vnet': 'VMnet2'})
+        k = m._read_vmx(os.path.join(parent, 'W10', 'W10.vmx'))
+        self.assertEqual(k['sata0:0.filename'], 'W10.vmdk')
+        self.assertEqual(k['sata0:1.devicetype'], 'atapi-cdrom')
+        self.assertEqual(k['ethernet0.vnet'], 'VMnet2')
+        self.assertEqual(k['ethernet0.virtualdev'], 'e1000e')
+        with self.assertRaises(ValueError):
+            m.t_vm_create({'name': 'bad/name', 'guest': 'xp', 'folder': parent, 'hardware_version': 20})
+
+    def _fake_vmrun(self, body_posix, body_nt):
+        with open(self.vmrun, 'w') as f:
+            f.write(body_nt if os.name == 'nt' else '#!/bin/sh\n' + body_posix)
+        os.chmod(self.vmrun, 0o755)
+        import importlib
+        self.m = importlib.reload(self.m)
+        self.m.inventory_sources = lambda: []
+
+    def test_guest_command_without_tools_fails_before_credentials(self):
+        # vmrun that knows checkToolsState and answers "unknown" (Tools not running)
+        self._fake_vmrun(
+            'if [ -z "$1" ]; then printf "vmrun version 1.17.0 build-1\\n\\n'
+            'checkToolsState      Path to vmx file     Query the state of tools\\n'
+            'runProgramInGuest    Path to vmx file     Run a program in Guest OS\\n"; exit 0; fi\n'
+            'case "$*" in *checkToolsState*) echo unknown;; *) echo "Total running VMs: 0";; esac\n',
+            '@echo off\r\nif "%~1"=="" (echo vmrun version 1.17.0 build-1& echo.& '
+            'echo checkToolsState      Path to vmx file     Query the state of tools& '
+            'echo runProgramInGuest    Path to vmx file     Run a program in Guest OS& exit /b 0)\r\n'
+            'echo %* | find "checkToolsState" >nul && (echo unknown& exit /b 0)\r\necho Total running VMs: 0\r\n')
+        m = self.m
+        asked = []
+        m.creds.read = lambda vmx: (None, None)
+        m.creds.prompt = lambda *a, **k: asked.append(1) or (None, None)
+        with self.assertRaises(RuntimeError) as cm:
+            m.t_vm_run({'vm': self.vmx, 'command': 'ver'})
+        self.assertIn('VMware Tools are not running', str(cm.exception))
+        self.assertEqual(asked, [])                                  # no credential dialog shown
+
+    def test_delete_locked_vm_explains_open_tab(self):
+        m = self.m
+        os.makedirs(self.vmx + '.lck')
+        with self.assertRaises(RuntimeError) as cm:
+            m.t_vm_manage({'vm': self.vmx, 'action': 'delete_vm', 'confirm': m.resolve_vm(m.load_config()[0], self.vmx)['name']})
+        self.assertIn('Workstation tab', str(cm.exception))
+        self.assertTrue(os.path.exists(self.vmx))
+
+    def test_delete_vm_removes_plugin_backups_and_state(self):
+        m = self.m
+        m.t_vm_settings({'vm': self.vmx, 'action': 'set', 'set': {'memsize': '768'}})   # creates a backup
+        m.set_vm_state(self.vmx, keyboard_layout='us')
+        folder = os.path.dirname(self.vmx)
+        os.remove(self.vmx)                    # what vmrun deleteVM does: VMware's own files are gone
+        out = m._cleanup_deleted(self.vmx)
+        self.assertIn('removed plugin backup', out)
+        self.assertFalse(os.path.exists(folder))
+        self.assertNotIn(os.path.normcase(os.path.abspath(self.vmx)), m.load_state())
+
     def test_mcp_handshake(self):
         p = subprocess.run([sys.executable, os.path.join(SERVER, 'vm_control.py')],
                            input=b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'
@@ -171,6 +276,7 @@ class ServerTest(unittest.TestCase):
         names = [t['name'] for t in lines[1]['result']['tools']]
         self.assertIn('vm_prepare', names)
         self.assertIn('vm_run', names)
+        self.assertIn('vm_create', names)
 
 
 if __name__ == '__main__':
