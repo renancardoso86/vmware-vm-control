@@ -499,7 +499,10 @@ def server_info():
 
 
 def t_vm_list(a):
-    v = VmRun()
+    try:
+        v = VmRun()
+    except RuntimeError as e:                     # still say which plugin/Python answered, for diagnosis
+        raise RuntimeError('%s\n%s' % (server_info(), e))
     rc, out = v.run(['list'])
     running = [l.strip() for l in out.splitlines()[1:] if l.strip()]
     lines = [server_info(), 'vmrun: %s (version %s, host type: %s, %d commands detected)' % (

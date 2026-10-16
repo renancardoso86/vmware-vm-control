@@ -5,6 +5,7 @@
 - `launch.cmd` uses the bundled Python first, then an installed `py`, then `python` - skipping the Microsoft Store `python` alias, which is not a real Python. Installs from the Git repository (marketplace, Claude Code) do not carry the bundled Python and keep needing an installed Python 3.6+.
 - `vm_shared_folders` on a running VM checks VMware Tools first and gives up after 40 s: without Tools, vmrun `addSharedFolder` never returned and blocked the plugin (found on a fresh Windows 10 VM during setup).
 - `vm_list` (and `--self-test`) start with the plugin version and the Python in use (bundled or installed), so the running version can be checked from Claude.
+- Tested on a fresh Windows 10 22H2 VM with no Python (only the Microsoft Store `python` alias): the bundled Python started the server (28 tools) in 1.7 s; without it, the launcher stopped at once with "Python 3 not found" instead of falling into the Store alias.
 
 ## 0.4.4 - 2026-10-16
 - New keyboard layouts for typing through VNC: German (QWERTZ, 00000407), Spanish (0000040A), Portuguese - Portugal (00000816) and United States-International (00020409), with dead keys and AltGr; detected automatically from the guest registry. The extra ISO key left of Z (`< > |`) is typed with Alt codes.
