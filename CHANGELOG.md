@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 - 2026-10-16
+Fixes from the test round on Workstation 17.5 / Windows Server 2008 R2:
+- `vm_device`: parameter renamed to `device_name` - remote callers (Claude cloud sessions linked to the PC) drop a parameter called `device`.
+- `vm_manage clone`: the clone gets its own free VNC port and a new random password (it used to copy the source's port and password) and is listed by `vm_list`.
+- `vm_screenshot` with `region` really zooms (at least 1:1, up to 4x); it used to shrink the region with the full-screen scale.
+- `vm_vnc_configure`: shows the real port, keeps the current port (or picks a free one instead of 5901), and no longer tells the user to set a password by hand.
+- `vm_manage upgrade_hardware` says when nothing changed (already at the highest version).
+- vmrun output goes to a temp file instead of a pipe: `vmrun start` opens the Workstation window, which inherited the pipe and kept every later tool call waiting until Workstation was closed (root cause of the time-outs).
+- `vm_power start` and `vm_guest_info wait` answer within 40 s (remote callers give up after about 60 s and queue the next calls).
+- Clear hints when VMware refuses an operation for lack of host rights (NAT port forwarding, typing through Tools).
+- `delete_vm` cleanup no longer reports an error when VMware already removed the folder.
+
 ## 0.4.0 - 2026-10-15
 - New `vm_create`: creates a powered-off VM on Workstation - folder, growable disk (`vmware-vdiskmanager`), `.vmx` from a guest preset (XP to Server 2025: guestOS id, IDE disk + in-box PCnet NIC for XP/2003, SATA + e1000/e1000e for Vista and later), optional install ISO, network (NAT / bridged / host-only / VMnetX / none) and VMware VNC already on 127.0.0.1 with a random password. Never overwrites an existing folder; logged in `changes.log`.
 - VMs created by the plugin are listed by `vm_list` even before VMware adds them to its library.

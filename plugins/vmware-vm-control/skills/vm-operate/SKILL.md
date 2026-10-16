@@ -25,7 +25,8 @@ All tools run on the host. Screen, mouse and keyboard go through the VNC server 
 ## GUI loop
 
 1. `vm_screenshot` before acting. Coordinates for `vm_click`, `vm_move`, `vm_drag` and `vm_scroll` are pixels of the **last full screenshot** of that VM; the server converts them to guest pixels.
-2. Use `region` to zoom into small text; zoomed images do not change the click scale - take a normal screenshot again before clicking.
+2. Use `region` to zoom into small text (enlarged to at least 1:1, up to 4x); zoomed images do not change the click scale - take a normal screenshot again before clicking.
+3. Calls answer within about 40 s: `vm_power start` may return "still in progress" while VMware opens its window - check with `vm_list` instead of starting again; `vm_guest_info` with `wait` may return "IP not available yet".
 3. Pass `screenshot: true` on input tools to see the result in the same call; give slow dialogs a larger `wait`.
 4. **Never type blind.** After any key or click that should open a window (Win+R, a menu, a dialog), take a screenshot and confirm that window is focused BEFORE `vm_type`. Typed text plus Enter landing on the desktop can launch shortcuts or worse. Pop-ups (activation, updates, UAC) often steal focus right after logon - close them first.
 5. `vm_type` converts text for the guest keyboard layout (US, Brazilian ABNT/ABNT2; others fall back to Alt+code). It reports characters it could not type - write those with `vm_run` instead. When the layout is unknown it refuses symbols; run `vm_prepare` first.

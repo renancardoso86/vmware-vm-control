@@ -15,7 +15,7 @@ Use `vm_settings` (`action: set` / `remove`) with the VM powered off. Values are
 | Named pipe | `serial0.fileType = "pipe"`, `serial0.fileName = "\\.\pipe\com_1"`, `serial0.pipe.endPoint = "server"` |
 | Output to a file | `serial0.fileType = "file"`, `serial0.fileName = "C:\path\serial.log"` |
 | Yield CPU on poll (Windows guests) | `serial0.tryNoRxLoss = "FALSE"`, `serial0.yieldOnMsrRead = "TRUE"` |
-| Live connect/disconnect | `vm_device` with `serial0` |
+| Live connect/disconnect | `vm_device` with `device_name` `serial0` |
 
 Parallel port: same pattern with `parallel0.*` (`fileType = "device"`, `fileName = "LPT1"`).
 

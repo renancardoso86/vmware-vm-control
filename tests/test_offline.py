@@ -267,6 +267,78 @@ class ServerTest(unittest.TestCase):
         self.assertFalse(os.path.exists(folder))
         self.assertNotIn(os.path.normcase(os.path.abspath(self.vmx)), m.load_state())
 
+    def test_delete_cleanup_when_vmware_removed_the_folder(self):
+        m = self.m
+        import shutil as sh
+        sh.rmtree(os.path.dirname(self.vmx))
+        out = m._cleanup_deleted(self.vmx)
+        self.assertIn('already removed by VMware', out)
+        self.assertNotIn('incomplete', out)
+
+    def test_permission_errors_get_a_hint(self):
+        m = self.m
+        with self.assertRaises(RuntimeError) as cm:
+            m._ok(1, 'Error: Failed to set port forwarding', 'setPortForwarding')
+        self.assertIn('Virtual Network Editor', str(cm.exception))
+        with self.assertRaises(RuntimeError) as cm:
+            m._ok(1, 'Error: Insufficient permissions in the host operating system', 'typeKeystrokesInGuest')
+        self.assertIn('method "vnc"', str(cm.exception))
+        with self.assertRaises(RuntimeError) as cm:
+            m._ok(1, 'Error: Insufficient permissions', 'somethingElse')
+        self.assertIn('administrator', str(cm.exception))
+
+    def test_device_tool_uses_device_name(self):
+        m = self.m
+        schema = [t for t in m.TOOLS if t[0] == 'vm_device'][0][2]
+        self.assertIn('device_name', schema['properties'])
+        self.assertNotIn('device', schema['properties'])           # "device" is swallowed by remote bridges
+        with self.assertRaises(ValueError):
+            m.t_vm_device({'vm': self.vmx, 'action': 'connect'})
+
+    def test_clone_gets_its_own_vnc_port_and_password(self):
+        m = self.m
+        m.t_vm_settings({'vm': self.vmx, 'action': 'set', 'set': {
+            'RemoteDisplay.vnc.enabled': 'TRUE', 'RemoteDisplay.vnc.port': '5901',
+            'RemoteDisplay.vnc.password': 'origpass', 'RemoteDisplay.vnc.key': 'oldkey'}})
+        m.set_vm_state(self.vmx, keyboard_layout='us')
+        st = m.load_state(); st['_created'] = [self.vmx]; m.save_state(st)   # source visible to the port picker
+        clone = os.path.join(self.tmp.name, 'clone', 'clone.vmx')
+        os.makedirs(os.path.dirname(clone))
+        import shutil as sh
+        sh.copyfile(self.vmx, clone)
+        out = m._after_clone(clone)
+        k = m._read_vmx(clone)
+        self.assertNotEqual(k['remotedisplay.vnc.port'], '5901')
+        self.assertNotEqual(k['remotedisplay.vnc.password'], 'origpass')
+        self.assertNotIn('remotedisplay.vnc.key', k)
+        self.assertIn(clone, [c['vmx'] for c in m.discover_vms()])
+        self.assertIn('own port', out)
+
+    def test_vnc_configure_keeps_real_port_and_current_message(self):
+        m = self.m
+        m.t_vm_settings({'vm': self.vmx, 'action': 'set', 'set': {
+            'RemoteDisplay.vnc.enabled': 'TRUE', 'RemoteDisplay.vnc.port': '5902'}})
+        off = m.t_vm_vnc_configure({'vm': self.vmx, 'enable': False})
+        self.assertIn('was port 5902', off)
+        on = m.t_vm_vnc_configure({'vm': self.vmx, 'enable': True})
+        self.assertNotIn('config.json', on)
+        k = m._read_vmx(self.vmx)
+        self.assertEqual(k['remotedisplay.vnc.ip'], '127.0.0.1')
+        self.assertEqual(len(k['remotedisplay.vnc.password']), 8)
+
+    @unittest.skipIf(os.name == 'nt', 'uses a POSIX shell to leave a child holding the output handle')
+    def test_vmrun_output_does_not_wait_for_children(self):
+        # like `vmrun start` opening the Workstation window: the child keeps vmrun's output handle open
+        m = self.m
+        script = os.path.join(self.tmp.name, 'spawner')
+        with open(script, 'w') as f:
+            f.write('#!/bin/sh\necho started\nsleep 20 &\nexit 0\n')
+        os.chmod(script, 0o755)
+        t0 = time.time()
+        out, rc = m._run_to_file([script], 30, {})
+        self.assertLess(time.time() - t0, 5)
+        self.assertEqual((out, rc), ('started', 0))
+
     def test_mcp_handshake(self):
         p = subprocess.run([sys.executable, os.path.join(SERVER, 'vm_control.py')],
                            input=b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'

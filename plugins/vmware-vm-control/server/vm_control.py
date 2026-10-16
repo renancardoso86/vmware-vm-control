@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.4.0'
+SERVER_VERSION = '0.4.1'
 IS_WIN = os.name == 'nt'
 
 
@@ -331,24 +331,57 @@ class VmRun:
         kw = {}
         if IS_WIN:
             kw['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
-        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout, **kw)
-        out = p.stdout.decode('utf-8', 'replace').strip()
-        if guest and p.returncode != 0 and re.search(r'invalid user name or password|incorrect user name',
+        out, rc = _run_to_file(cmd, timeout, kw)
+        if guest and rc != 0 and re.search(r'invalid user name or password|incorrect user name',
                                                      out, re.I):
             if creds.read(d['vmx'])[0]:
                 creds.delete(d['vmx'])
             raise RuntimeError('The guest rejected the stored login (removed). Call vm_credentials with action '
                                '"set" so the user can type it again in the Windows dialog.')
-        return p.returncode, out
+        return rc, out
+
+
+HINTS = {
+    'setportforwarding': 'Changing VMware NAT settings probably needs administrator rights, and the Claude app does '
+                         'not run elevated. Ask the user to add the rule in Workstation: Edit > Virtual Network Editor > '
+                         'Change Settings > VMnet8 > NAT Settings > Add.',
+    'deleteportforwarding': 'Changing VMware NAT settings probably needs administrator rights, and the Claude app does '
+                            'not run elevated. Ask the user to remove the rule in Workstation: Edit > Virtual Network '
+                            'Editor > Change Settings > VMnet8 > NAT Settings.',
+    'typekeystrokesinguest': 'Typing through VMware Tools was refused on this host; use vm_type with method "vnc" '
+                             '(the default), which works for any guest.',
+}
+
+
+def _run_to_file(cmd, timeout, kw):
+    """Run vmrun with its output in a temp FILE, not a pipe: `vmrun start` launches the Workstation window, which
+    inherits vmrun's output handle and keeps a pipe open until the window closes - reading a pipe would hang."""
+    with tempfile.TemporaryFile() as f:
+        p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, **kw)
+        try:
+            rc = p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            raise
+        f.seek(0)
+        return f.read().decode('utf-8', 'replace').strip(), rc
 
 
 def _ok(rc, out, what):
     if rc != 0:
-        raise RuntimeError('%s failed (vmrun exit %s): %s' % (what, rc, out or 'no output'))
+        msg = '%s failed (vmrun exit %s): %s' % (what, rc, out or 'no output')
+        hint = HINTS.get(what.split()[-1].lower())
+        if not hint and re.search(r'insufficient permissions', out or '', re.I):
+            hint = ('VMware refused the operation for lack of rights on the host (probably administrator rights, '
+                    'which the Claude app does not have).')
+        if hint:
+            msg += '\n-> ' + hint
+        raise RuntimeError(msg)
     return out
 
 
 # ======================================================================== tools
+START_WAIT = 40   # seconds; tool calls must answer well inside the ~60 s limit of remote callers
 STATE = {'scale': {}}  # last screenshot scale per VM
 LOCK = threading.Lock()
 
@@ -454,12 +487,31 @@ def t_vm_power(a):
         args.append('gui' if a.get('gui', True) else 'nogui')
     elif action in ('stop', 'reset', 'suspend'):
         args.append(a.get('mode', 'soft'))
-    r = _ok(*v.run(args, timeout=300), what='vmrun ' + action) or ('%s: OK' % action)
     if action == 'start':
+        # vmrun start can take minutes when it has to open the Workstation window first; never block that long
+        kw = {'creationflags': 0x08000000} if IS_WIN else {}
+        outf = tempfile.TemporaryFile()
+        p = subprocess.Popen([v.path, '-T', v.type] + args, stdin=subprocess.DEVNULL, stdout=outf,
+                             stderr=subprocess.STDOUT, **kw)
+        deadline = time.time() + START_WAIT
+        while time.time() < deadline:
+            if p.poll() is not None:
+                break
+            if _is_running(v, d['vmx']):
+                return 'start: OK (VM running; VMware may still be opening its window)'
+            time.sleep(2)
+        if p.poll() is None:
+            return ('start: still in progress after %ds (VMware is probably opening its window or showing a '
+                    'question). Check with vm_list in a moment; do not call start again.' % START_WAIT)
+        outf.seek(0)
+        out = outf.read().decode('utf-8', 'replace').strip()
+        outf.close()
+        _ok(p.returncode, out, 'vmrun start')
         time.sleep(3)
         if not _is_running(v, d['vmx']):
-            return r + ' - but the VM is not listed as running; check the VMware window for a question dialog.'
-    return r
+            return 'start: OK - but the VM is not listed as running; check the VMware window for a question dialog.'
+        return 'start: OK'      # vmrun's own output here is UI log paths and harmless I/O warnings
+    return _ok(*v.run(args, timeout=300), what='vmrun ' + action) or ('%s: OK' % action)
 
 
 def t_vm_snapshot(a):
@@ -485,7 +537,10 @@ def t_vm_screenshot(a):
     try:
         with LOCK, _vnc(d) as c:
             w, h = c.capture()
-            if not scale:
+            if not scale and region:
+                rw = max(1, min(w, int(region[2])) - max(0, int(region[0])))
+                scale = max(1.0, min(4.0, 1280.0 / rw))      # a region is a zoom: never smaller than 1:1
+            elif not scale:
                 scale = min(1.0, 1280.0 / max(w, 1))
             png, ow, oh = c.png(region=region, scale=scale)
     except (VNCError, RuntimeError) as e:
@@ -502,9 +557,13 @@ def t_vm_screenshot(a):
                 {'type': 'image', 'data': base64.b64encode(png).decode('ascii'), 'mimeType': 'image/png'}]
     if not region:
         STATE['scale'][d['name']] = scale
-    txt = ('Guest screen %dx%d. Image %dx%d (scale %.3f%s). Give click/move coordinates in THIS image\'s pixels '
-           '(the server converts using the last full screenshot\'s scale).' % (
-               w, h, ow, oh, scale, ', region %s' % region if region else ''))
+    if region:
+        txt = ('Guest screen %dx%d. Zoom of region %s at %.1fx (image %dx%d) - for reading only; take a normal '
+               'screenshot before clicking (click coordinates still use the last full screenshot).' % (
+                   w, h, region, scale, ow, oh))
+    else:
+        txt = ('Guest screen %dx%d. Image %dx%d (scale %.3f). Give click/move coordinates in THIS image\'s pixels.'
+               % (w, h, ow, oh, scale))
     return [{'type': 'text', 'text': txt},
             {'type': 'image', 'data': base64.b64encode(png).decode('ascii'), 'mimeType': 'image/png'}]
 
@@ -726,7 +785,13 @@ def t_vm_vnc_configure(a):
     if any(os.path.normcase(l.strip()) == os.path.normcase(vmx) for l in out.splitlines()[1:]):
         raise RuntimeError('The VM is running. Shut it down first; VMware rewrites the .vmx while a VM runs.')
     enable = a.get('enable', True)
-    port = int(a.get('port', 5901))
+    cur = _read_vmx(vmx).get('remotedisplay.vnc.port')
+    if a.get('port'):
+        port = int(a['port'])
+    elif cur and cur.isdigit():
+        port = int(cur)
+    else:
+        port = _pick_vnc_port(vmx)
     lines, nl = read_vmx_lines(vmx)
     backup = _backup_name(vmx)
     shutil.copyfile(vmx, backup)
@@ -739,10 +804,11 @@ def t_vm_vnc_configure(a):
                 secrets.choice(string.ascii_letters + string.digits) for _ in range(8)))
     write_vmx_lines(vmx, keep, nl)
     _audit('vnc_configure', d['name'], 'enabled=%s port=%s' % (enable, port))
-    return ('VNC %s in %s (port %d). Backup: %s.\nNext: set a VNC password (max 8 chars) - in Workstation: '
-            'VM > Settings > Options > VNC Connections; the user then writes the same password in "vnc_password" '
-            'in %s. Without a password anyone who can reach this port can control the VM.'
-            % ('enabled' if enable else 'disabled', vmx, port, backup, v.cfg_path))
+    if not enable:
+        return ('VNC disabled in %s (was port %s). Backup: %s. Screen, mouse and keyboard tools need it again: '
+                'vm_vnc_configure enable=true or vm_prepare.' % (vmx, cur or '-', backup))
+    return ('VNC enabled in %s on 127.0.0.1:%d (active at next power-on). Password: random, stored in the .vmx '
+            '(kept if one was already set) - nobody has to type it. Backup: %s.' % (vmx, port, backup))
 
 
 # ------------------------------------------------------------- VM configuration
@@ -845,10 +911,13 @@ def t_vm_device(a):
     """Connect/disconnect a virtual device while the VM runs (e.g. ethernet0, ide1:0, serial0, sound, usb)."""
     v = VmRun()
     d = resolve_vm(v.cfg, a.get('vm'))
+    dev = a.get('device_name') or a.get('device')
+    if not dev:
+        raise ValueError('"device_name" is required, e.g. ethernet0, ide1:0, sata0:1, serial0, sound, usb')
     cmd = 'connectNamedDevice' if a['action'] == 'connect' else 'disconnectNamedDevice'
-    r = _ok(*v.run([cmd, d['vmx'], a['device']]), what=cmd)
-    _audit(cmd, d['name'], a['device'])
-    return r or '%s %s: OK' % (a['action'], a['device'])
+    r = _ok(*v.run([cmd, d['vmx'], dev]), what=cmd)
+    _audit(cmd, d['name'], dev)
+    return r or '%s %s: OK' % (a['action'], dev)
 
 
 def t_vm_shared_folders(a):
@@ -899,7 +968,10 @@ def t_vm_guest_info(a):
     k = _read_vmx(d['vmx'])
     out.append('Virtual hardware version: %s | guest OS type: %s' % (k.get('virtualhw.version', '?'), k.get('guestos', '?')))
     if v.has('getGuestIPAddress'):
-        rc, ip = v.run(['getGuestIPAddress', d['vmx']] + (['-wait'] if a.get('wait') else []), timeout=300)
+        try:
+            rc, ip = v.run(['getGuestIPAddress', d['vmx']] + (['-wait'] if a.get('wait') else []), timeout=START_WAIT)
+        except subprocess.TimeoutExpired:
+            ip = 'not available yet after %ds (guest still booting?) - call again later' % START_WAIT
         out.append('Guest IP: %s' % ip)
     elif d.get('guest_user'):
         out.append('Guest IP: getGuestIPAddress not in this vmrun; use vm_run with "ipconfig".')
@@ -936,11 +1008,45 @@ def t_vm_manage(a):
         raise RuntimeError('The VM is powered off but still locked (%s.lck exists): it is probably open in a '
                            'VMware Workstation tab. Ask the user to close that tab (or VMware), then call again. '
                            'Nothing was deleted.' % d['vmx'])
+    hw_before = _read_vmx(d['vmx']).get('virtualhw.version')
     r = _ok(*v.run(args, timeout=3600), what=args[0])
     _audit(args[0], d['name'], ' '.join(args[2:]))
+    if act == 'upgrade_hardware':
+        hw_after = _read_vmx(d['vmx']).get('virtualhw.version')
+        if hw_after == hw_before:
+            return ('upgrade_hardware: nothing changed - the VM is already at virtual hardware %s, the highest this '
+                    'VMware offers.' % hw_after)
+        return 'upgrade_hardware: virtual hardware %s -> %s.' % (hw_before, hw_after)
+    if act == 'clone':
+        return (r or 'clone: OK') + _after_clone(a['dest_vmx'])
     if act == 'delete_vm':
         r = (r or 'delete_vm: OK') + _cleanup_deleted(d['vmx'])
     return r or '%s: OK' % act
+
+
+def _after_clone(vmx):
+    """A clone copies the source's VNC port and password: give it its own, and list it in vm_list."""
+    notes = []
+    if not os.path.exists(vmx):
+        return '\nclone .vmx not found at %s - VNC not adjusted' % vmx
+    k = _read_vmx(vmx)
+    if k.get('remotedisplay.vnc.enabled', '').lower() == 'true':
+        port = _pick_vnc_port(vmx)
+        pw = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+        lines, nl = read_vmx_lines(vmx)
+        keep = [l for l in lines if not re.match(r'\s*RemoteDisplay\.vnc\.(port|ip|password|key)\s*=', l, re.I)]
+        keep += ['RemoteDisplay.vnc.port = "%d"' % port, 'RemoteDisplay.vnc.ip = "127.0.0.1"',
+                 'RemoteDisplay.vnc.password = "%s"' % pw]
+        write_vmx_lines(vmx, keep, nl)
+        notes.append('VNC of the clone moved to its own port 127.0.0.1:%d with a new random password' % port)
+    st = load_state()
+    created = st.setdefault('_created', [])
+    if vmx not in created:
+        created.append(vmx)
+    save_state(st)
+    notes.append('listed by vm_list')
+    _audit('clone_adjust', os.path.basename(vmx), '; '.join(notes))
+    return '\n' + '\n'.join(notes)
 
 
 def _cleanup_deleted(vmx):
@@ -948,15 +1054,18 @@ def _cleanup_deleted(vmx):
     notes = []
     folder = os.path.dirname(os.path.abspath(vmx))
     prefix = os.path.basename(vmx) + '.bak-vmctl-'
+    if not os.path.isdir(folder):
+        notes.append('folder already removed by VMware: ' + folder)
+        folder = None
     try:
-        for f in os.listdir(folder):
+        for f in (os.listdir(folder) if folder else []):
             if f.startswith(prefix):
                 os.remove(os.path.join(folder, f))
                 notes.append('removed plugin backup ' + f)
-        if not os.listdir(folder):
+        if folder and not os.listdir(folder):
             os.rmdir(folder)
             notes.append('removed empty folder ' + folder)
-        elif os.path.exists(folder):
+        elif folder:
             notes.append('folder kept (other files remain): ' + folder)
     except OSError as e:
         notes.append('cleanup incomplete: %s' % e)
@@ -1423,7 +1532,7 @@ TOOLS = [
         'name': {'type': 'string'}}, ['vm', 'action']), t_vm_snapshot),
     ('vm_screenshot', 'Capture the VM screen through VMware\'s embedded VNC (works for any guest OS, even at boot). '
      'Returns a PNG; later click coordinates use this image\'s pixels.',
-     S({'vm': VM, 'scale': {'type': 'number', 'description': '0.1-1; default fits width 1280'},
+     S({'vm': VM, 'scale': {'type': 'number', 'description': '0.1-4; default fits width 1280 (with region: zoom, at least 1:1)'},
         'region': {'type': 'array', 'items': {'type': 'number'}, 'description': 'optional [x0,y0,x1,y1] in GUEST '
                    'pixels to zoom into (does not change the click scale)'}}, ['vm']), t_vm_screenshot),
     ('vm_click', 'Click in the VM at (x, y) from the last screenshot.',
@@ -1478,7 +1587,8 @@ TOOLS = [
         'remove': {'type': 'array', 'items': {'type': 'string'}}}, ['vm']), t_vm_settings),
     ('vm_device', 'Connect or disconnect a virtual device while the VM runs (ethernet0, ide1:0, sata0:1, serial0, '
      'sound, usb...).', S({'vm': VM, 'action': {'type': 'string', 'enum': ['connect', 'disconnect']},
-                          'device': {'type': 'string'}}, ['vm', 'action', 'device']), t_vm_device),
+                          'device_name': {'type': 'string', 'description': 'ethernet0, ide1:0, sata0:1, serial0, '
+                                          'sound, usb...'}}, ['vm', 'action', 'device_name']), t_vm_device),
     ('vm_shared_folders', 'Host-guest shared folders: enable/disable, add, remove, set writable/readonly.',
      S({'vm': VM, 'action': {'type': 'string', 'enum': ['enable', 'disable', 'add', 'remove', 'set_state']},
         'share_name': {'type': 'string'}, 'host_path': {'type': 'string'}, 'writable': {'type': 'boolean'},
