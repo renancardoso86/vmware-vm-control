@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.5.4'
+SERVER_VERSION = '0.5.5'
 IS_WIN = os.name == 'nt'
 
 

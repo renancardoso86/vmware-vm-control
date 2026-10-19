@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.5 - 2026-10-19
+- Directory listing fields in `plugin.json`: display name "VMware VM Control" (the portal showed "Vmware Vm Control"), documentation, support (GitHub issues) and privacy links (the README "Data and network" section).
+
 ## 0.5.4 - 2026-10-19
 Fixes from the first validation in the Claude directory portal.
 - `.mcp.json` writes the launcher path with forward slashes (`${CLAUDE_PLUGIN_ROOT}/server/launch.cmd`): the portal blocked the backslash form as "a command assembled at run time" (COMMAND_PATH_COMPUTED). Claude Code on Windows reports the server connected with the new path.

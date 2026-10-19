@@ -12,7 +12,7 @@
       "name": "vmware-vm-control",
       "source": "./plugins/vmware-vm-control",
       "description": "Windows hosts. Screen, mouse and keyboard through VMware's embedded VNC; commands, files, processes, power, snapshots and every .vmx setting through vmrun. Zero-config: finds VMs by name, secures VNC, asks the guest login in the native Windows credential dialog.",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "license": "MIT",
       "keywords": [
         "vmware",

@@ -1,12 +1,16 @@
 {
   "name": "vmware-vm-control",
-  "version": "0.5.4",
+  "displayName": "VMware VM Control",
+  "version": "0.5.5",
   "description": "For Windows hosts: operate and configure VMware Workstation / Player virtual machines of any version from the host. Screen, mouse and keyboard through VMware's embedded VNC (bound to 127.0.0.1); commands, files, processes, power, snapshots and every .vmx setting through vmrun. Detects what the installed VMware supports at runtime. Works with any Windows guest from XP onward - nothing modern runs inside the guest. Downloads the official Python from python.org on first start only if none is found.",
   "author": {
     "name": "Renan Cardoso - Dominio Automacao"
   },
   "homepage": "https://github.com/renancardoso86/vmware-vm-control",
   "repository": "https://github.com/renancardoso86/vmware-vm-control",
+  "documentationUrl": "https://github.com/renancardoso86/vmware-vm-control/blob/main/plugins/vmware-vm-control/README.md",
+  "supportUrl": "https://github.com/renancardoso86/vmware-vm-control/issues",
+  "privacyPolicyUrl": "https://github.com/renancardoso86/vmware-vm-control/blob/main/plugins/vmware-vm-control/README.md#data-and-network",
   "license": "MIT",
   "keywords": [
     "vmware",
