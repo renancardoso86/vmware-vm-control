@@ -8,11 +8,11 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 
 ## Status (2026-10-19)
 
-- Latest release: **v0.5.1** (release package bundles Python 3.14.8; installed on Renan's PC, `vm_list` shows "bundled"). Prepared, not yet published: **0.5.2** - first-start Python download for marketplace / Claude Code installs (decision 2026-10-19: option c) and the click fix for guests without Tools.
-- The Claude app moved its plugin folder to `%LOCALAPPDATA%\Claude-Data\...`; the bundled Python runs from there too.
-- VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us), `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login; `Click-Test` (Win10 setup ISO, powered off) left from the click investigation - delete after Renan's OK.
-- Installation guides (PDF, EN/PT) in OneDrive `dist\` describe 0.5.1 (ways A/C "need Python"); update them with 0.5.2.
-- A levantar: whether the Claude app waits the ~21 s of the first-start download (MCP start-up timeout) - needs a marketplace install in the app.
+- Latest release: **v0.5.2** (2026-10-19): first-start Python download for marketplace / Claude Code installs (decision 2026-10-19: option c) and the click fix for guests without Tools. Release asset 12,487,609 bytes, no nested zip.
+- Installed on Renan's PC **from the marketplace** (2026-10-19), `vm_list` shows "0.5.2 on Python 3.14.8 (downloaded)". `%USERPROFILE%\.vmware-vm-control\python` (downloaded Python, ~24 MB) is kept; while it exists the plugin uses it before the installed Python.
+- The Claude app stores plugins in `%LOCALAPPDATA%\Claude-Data\...\rpm\...`; the bundled Python runs from there too.
+- VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us), `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login. `Click-Test` deleted.
+- Installation guides (PDF, EN/PT) in OneDrive `dist\` describe 0.5.2 with the real marketplace UI path (checked in the Portuguese app; English labels are translations).
 
 ## Decisions (with the reason)
 
@@ -57,6 +57,7 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 
 | Guest | Passed | Notes |
 |---|---|---|
+| Claude desktop app 2.42304.2, Windows 11, marketplace install of 0.5.2 with no Python on the user PATH - 2026-10-19 | marketplace added from `renancardoso86/vmware-vm-control` and plugin installed; server started without restarting the app (10:22:21 files, 10:22:24 server). After an app restart with Python off the PATH: launcher 10:28:59, Python downloaded 10:29:04, server on the downloaded Python 10:29:07 (**8 s first start, the app waited**); `vm_list` "downloaded", both VMs listed | marketplace copy has no `python\` folder (it is the repository, not the release asset) - expected, covered by the download |
 | Win 10 22H2 setup (no Tools) VM `Click-Test` - click investigation 2026-10-19 | combo-box click detected by pixel check through raw VNC: from a far corner 6/6 and plugin-like single connection 5/5 worked; **first click after boot failed 2/2** (second click worked); with the approach move the first click after boot worked 2/2 (one with the new `vnc_client.click`) | earlier "ignored clicks" during the Win10 install were this; one more case in the session was a coordinate mix-up (screenshot scale changed by `screenshot: true`) -> scale now kept |
 | Host Windows 11, no Python visible (PATH = System32 only), repository layout without `python\` - 2026-10-19, 0.5.2 code | first start downloaded Python 3.14.8 (21 s) and served 28 tools ("downloaded"); second start 1.5 s; wrong SHA-256 refused, nothing installed, temp folder removed | - |
 | Win 10 Pro 22H2 (fresh, no Python, no network) created by `vm_create` preset 10-64 - 2026-10-16, plugin 0.5.0 test build | SATA disk seen by setup without drivers; whole install + OOBE through VNC (local account, no password); Tools installed from Win+R; shared folder add/enable/set_state once Tools ran; package expanded in the guest and server started on the bundled Python (28 tools, 1.7 s); with the bundled Python removed the launcher stopped with "Python 3 not found" (Store alias exit 9009 not used) | `vm_shared_folders add` hung while Tools were not running (vmrun never returns) -> Tools check + 40 s limit; first click on some setup screens ignored, second worked (cause: a levantar) |
@@ -97,6 +98,11 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 - Guests without VMware Tools can drop the first click after boot (seen in Windows 10 setup); fixed by the approach move in 0.5.2.
 - `%TEMP%\vmware-vm-control` (release working copy on Renan's PC) lost its `.git` between sessions; the release flow re-clones it when needed.
 - Copying a 5.6 GB ISO from the SharePoint sync folder took about 10 minutes (~13 MB/s download).
+- Marketplace install in the Claude app (Portuguese UI): Configurações > Plugins > + Adicionar > Adicionar marketplace > Adicionar de um repositório; pick the repo, "Sincronizar automaticamente" on, Sincronizar; then tab Descobrir > Adicionar. The app asked for the **Claude GitHub App** to have access to the repository ("Conceder acesso", GitHub sudo confirmation with the user's 2FA code) - only the user can do that step.
+- A first marketplace install starts the server right away (no app restart); the app process keeps the environment (PATH) it was started with, so PATH changes only count after an app restart.
+- Remove an uploaded plugin: Configurações > Plugins > Meus > ⋮ > Excluir > confirm Excluir.
+- Changing the user PATH from a Claude session was blocked twice by the safety classifier; the user ran the command. Restoring it from the backup later worked from the session.
+- Computer use cannot drive the Claude app itself; Windows-MCP UI clicks work but can collide with what the user is doing on the PC (one click landed in Chrome) - ask before UI automation while the user is active.
 - The Claude app refuses a `.plugin` that contains a `.zip` file ("Zip cannot contain nested zip files").
 - `Expand-Archive` (PowerShell 5) only accepts files ending in `.zip`; copy a `.plugin` to `.zip` first.
 - vmrun shared-folder commands on a running VM wait for VMware Tools; without Tools they never return.
