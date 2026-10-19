@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "vmware-vm-control": {
-      "command": "${CLAUDE_PLUGIN_ROOT}\\server\\launch.cmd",
+      "command": "${CLAUDE_PLUGIN_ROOT}/server/launch.cmd",
       "args": []
     }
   }

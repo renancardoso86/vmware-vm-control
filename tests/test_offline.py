@@ -443,11 +443,11 @@ class PackagingTest(unittest.TestCase):
     ROOT = os.path.join(HERE, '..')
 
     def test_mcp_json_runs_launcher_directly(self):
-        # no "cmd /c" wrapper: the directory scan holds servers started through a shell; the Claude app and
+        # no "cmd /c" wrapper and forward slashes (the directory validator blocks a backslash path as computed): the directory scan holds servers started through a shell; the Claude app and
         # Claude Code both start a .cmd command themselves (tested 2026-10-19 on Windows 11)
         m = json.load(open(os.path.join(self.ROOT, 'plugins', 'vmware-vm-control', '.mcp.json')))
         srv = m['mcpServers']['vmware-vm-control']
-        self.assertEqual(srv['command'], '${CLAUDE_PLUGIN_ROOT}\\server\\launch.cmd')
+        self.assertEqual(srv['command'], '${CLAUDE_PLUGIN_ROOT}/server/launch.cmd')  # literal path, forward slashes
         self.assertEqual(srv.get('args', []), [])
 
     def test_launcher_order_bundled_downloaded_installed_then_download(self):

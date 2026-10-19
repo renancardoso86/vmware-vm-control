@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4 - 2026-10-19
+Fixes from the first validation in the Claude directory portal.
+- `.mcp.json` writes the launcher path with forward slashes (`${CLAUDE_PLUGIN_ROOT}/server/launch.cmd`): the portal blocked the backslash form as "a command assembled at run time" (COMMAND_PATH_COMPUTED). Claude Code on Windows reports the server connected with the new path.
+- Plugin icon (`.claude-plugin/icon.png`, 1024 px).
+- `get-python.ps1`: the table read from `python-embed.txt` is no longer called `$pin` (the portal read it as a credential).
+
 ## 0.5.3 - 2026-10-19
 Preparation for the Claude plugin directory.
 - `.mcp.json` starts `server\launch.cmd` directly instead of through `cmd /d /c`. The Claude desktop app runs it as `cmd.exe /d /s /c "...launch.cmd"` by itself and Claude Code reports it connected (both tested on Windows 11); the directory scan holds servers whose command goes through a shell.

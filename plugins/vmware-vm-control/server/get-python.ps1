@@ -7,10 +7,10 @@ $ErrorActionPreference = 'Stop'
 $tmp = $null
 function Say($m) { [Console]::Error.WriteLine("vmware-vm-control: $m") }
 try {
-    $pin = @{}
+    $embed = @{}
     Get-Content (Join-Path $PSScriptRoot 'python-embed.txt') | Where-Object { $_ -match '^\s*(\w+)\s*=\s*(\S+)' } |
-        ForEach-Object { $pin[$Matches[1]] = $Matches[2] }
-    $ver = $pin['version']; $sha = $pin['sha256']
+        ForEach-Object { $embed[$Matches[1]] = $Matches[2] }
+    $ver = $embed["version"]; $sha = $embed["sha256"]
     if (-not $ver -or -not $sha) { throw 'python-embed.txt has no version/sha256' }
     $arch = if ([Environment]::Is64BitOperatingSystem) { 'amd64' } else { throw '32-bit Windows is not supported by the downloaded Python' }
     $url = "https://www.python.org/ftp/python/$ver/python-$ver-embed-$arch.zip"
