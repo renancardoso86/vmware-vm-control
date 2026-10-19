@@ -65,6 +65,17 @@ Guest OS settings (IP, firewall, RDP, users, services, registry, silent installs
    - detects the guest keyboard layout so typed text comes out right.
 3. Done. Remove a stored login any time with `vm_credentials` (`forget`) or in Windows *Credential Manager*.
 
+### Example prompts
+
+- *"List my VMware VMs."* - `vm_list`: VMs from the library and recent list, which are running, VNC ports.
+- *"Prepare the VM Win7 Lab and take a screenshot."* - `vm_prepare` (secure VNC, Tools check, login dialog, keyboard layout), then `vm_screenshot`.
+- *"In the VM Win7 Lab, open Notepad and type 'test ç ã'."* - `vm_key` (Win+R), `vm_type` in the guest keyboard layout, `vm_screenshot` to check.
+- *"Run ipconfig /all in the VM and tell me its IP address."* - `vm_run` (cmd) through VMware Tools.
+- *"Copy C:\\temp\\setup.exe to the VM's desktop and take a snapshot called before-install."* - `vm_copy`, `vm_snapshot`.
+- *"Give the VM 4 GB of memory and 2 CPUs."* - `vm_settings` (asks before powering the VM off).
+
+Testing needs VMware Workstation or Player on the host and a VM; there is no hosted test account, because everything runs on the user's PC.
+
 ### Optional overrides
 
 `%USERPROFILE%\.vmware-vm-control\config.json` is optional: `vmrun_path`, `host_type`, and per-VM entries (`vmx`, `guest_user`, `guest_password_env`, `vnc_port`, `vnc_password`, `guest_temp`, `guest_cmd`). On Linux/macOS hosts (no credential dialog) use `guest_password_env`. Other files in that folder: `state.json` (remembered keyboard layouts), `changes.log` (every change made), `server\` (runtime copy of the server).
@@ -92,6 +103,10 @@ What stays on the PC:
 - Timestamped `.vmx` backups next to each VM before every edit.
 
 The plugin does not change Windows settings, permissions or Claude settings. Delete `%USERPROFILE%\.vmware-vm-control` and the `vmware-vm-control:` entries in Credential Manager to remove everything it stored.
+
+## Reporting security issues
+
+Report vulnerabilities privately through GitHub's *Report a vulnerability* (repository > Security), or open an issue without exploit details and ask for a private contact: https://github.com/renancardoso86/vmware-vm-control/issues. Reports are acknowledged and investigated; fixes ship as a new release.
 
 ## How it starts (Windows)
 

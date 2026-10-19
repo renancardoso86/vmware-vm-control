@@ -442,6 +442,20 @@ class ServerTest(unittest.TestCase):
 class PackagingTest(unittest.TestCase):
     ROOT = os.path.join(HERE, '..')
 
+    def test_every_tool_has_annotations(self):
+        import vm_control
+        tools = vm_control.handle({'id': 1, 'method': 'tools/list'})['result']['tools']
+        self.assertEqual(len(tools), len(vm_control.TOOLS))
+        for t in tools:
+            a = t['annotations']
+            self.assertTrue(a['title'])
+            self.assertIn('readOnlyHint', a)
+            self.assertFalse(a['openWorldHint'])
+            if not a['readOnlyHint']:
+                self.assertIn('destructiveHint', a)
+        ro = {t['name'] for t in tools if t['annotations']['readOnlyHint']}
+        self.assertEqual(ro, {'vm_list', 'vm_setup_help', 'vm_screenshot', 'vm_guest_info'})
+
     def test_mcp_json_runs_launcher_directly(self):
         # no "cmd /c" wrapper and forward slashes (the directory validator blocks a backslash path as computed): the directory scan holds servers started through a shell; the Claude app and
         # Claude Code both start a .cmd command themselves (tested 2026-10-19 on Windows 11)

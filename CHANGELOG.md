@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.6 - 2026-10-19
+Items the Anthropic Software Directory Policy asks of MCP servers and listed software:
+- Every tool now carries MCP annotations: `title`, `readOnlyHint` (only `vm_list`, `vm_setup_help`, `vm_screenshot`, `vm_guest_info`), `destructiveHint` (true where a call can delete, overwrite, revert, stop, kill, run guest commands or send input the guest may act on), `idempotentHint`, and `openWorldHint: false` (everything runs on the PC).
+- The server's start-up instructions no longer say that credentials live in the config file: the guest login is typed by the user in the Windows credential dialog.
+- README: example prompts, a note that testing needs VMware and a VM on the host (no hosted test account), and how to report security issues; new `SECURITY.md`.
+
 ## 0.5.5 - 2026-10-19
 - Directory listing fields in `plugin.json`: display name "VMware VM Control" (the portal showed "Vmware Vm Control"), documentation, support (GitHub issues) and privacy links (the README "Data and network" section).
 

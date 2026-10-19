@@ -33,7 +33,7 @@ import socket  # noqa: E402
 import string  # noqa: E402
 
 SERVER_NAME = 'vmware-vm-control'
-SERVER_VERSION = '0.5.5'
+SERVER_VERSION = '0.5.6'
 IS_WIN = os.name == 'nt'
 
 
@@ -1757,6 +1757,49 @@ TOOLS = [
 ]
 TOOL_MAP = {t[0]: t[3] for t in TOOLS}
 
+# MCP tool annotations (title, readOnlyHint, destructiveHint, idempotentHint, openWorldHint). Everything runs on
+# this PC (vmrun, VNC on 127.0.0.1), so openWorldHint is False. destructiveHint is True where a call can delete,
+# overwrite, revert, stop or kill something, run arbitrary guest commands, or send input that the guest may act on.
+_RO, _DS, _ID = 'readOnlyHint', 'destructiveHint', 'idempotentHint'
+TOOL_ANNOTATIONS = {
+    'vm_prepare': ('Prepare a VM for Claude', False, False, True),
+    'vm_credentials': ('Guest login (status, set, forget)', False, True, False),
+    'vm_list': ('List VMs', True, False, True),
+    'vm_setup_help': ('Setup help', True, False, True),
+    'vm_config_init': ('Create the optional config file', False, False, True),
+    'vm_power': ('Power a VM on / off', False, True, False),
+    'vm_snapshot': ('Snapshots', False, True, False),
+    'vm_screenshot': ('Screenshot of the VM', True, False, True),
+    'vm_click': ('Click in the VM', False, True, False),
+    'vm_move': ('Move the VM mouse pointer', False, False, True),
+    'vm_drag': ('Drag in the VM', False, True, False),
+    'vm_scroll': ('Scroll in the VM', False, False, False),
+    'vm_type': ('Type text in the VM', False, True, False),
+    'vm_key': ('Press keys in the VM', False, True, False),
+    'vm_run': ('Run a script in the guest', False, True, False),
+    'vm_copy': ('Copy a file host <-> guest', False, True, True),
+    'vm_files': ('Guest files', False, True, False),
+    'vm_processes': ('Guest processes', False, True, False),
+    'vm_settings': ('VM settings (.vmx)', False, True, True),
+    'vm_device': ('Connect / disconnect a device', False, False, True),
+    'vm_shared_folders': ('Shared folders', False, True, False),
+    'vm_variable': ('VM variables', False, False, True),
+    'vm_guest_info': ('Guest info', True, False, True),
+    'vm_manage': ('Tools, hardware, clone, delete', False, True, False),
+    'vm_host_network': ('Host networks and NAT forwarding', False, True, False),
+    'vm_network': ('VM network adapters', False, True, False),
+    'vm_create': ('Create a new VM', False, False, False),
+    'vm_vnc_configure': ('Enable / disable VNC', False, False, True),
+}
+
+
+def tool_annotations(name):
+    title, ro, ds, idem = TOOL_ANNOTATIONS[name]
+    a = {'title': title, _RO: ro, _ID: idem, 'openWorldHint': False}
+    if not ro:
+        a[_DS] = ds
+    return a
+
 
 # ======================================================================== JSON-RPC
 def send(msg):
@@ -1775,14 +1818,16 @@ def handle(req):
             'serverInfo': {'name': SERVER_NAME, 'version': SERVER_VERSION},
             'instructions': ('Operate VMware Workstation/Player VMs from the host. Screen/mouse/keyboard via VMware '
                              'embedded VNC (any guest OS), commands/files via vmrun + VMware Tools. Take a screenshot '
-                             'before acting. Never type passwords for the user; credentials live in the config file.')}}
+                             'before acting. Never type passwords for the user; the guest login is typed by the user in the '
+                             'Windows credential dialog (vm_credentials / vm_prepare).')}}
     if method in ('notifications/initialized', 'notifications/cancelled'):
         return None
     if method == 'ping':
         return {'jsonrpc': '2.0', 'id': mid, 'result': {}}
     if method == 'tools/list':
         return {'jsonrpc': '2.0', 'id': mid, 'result': {'tools': [
-            {'name': n, 'description': desc, 'inputSchema': sch} for n, desc, sch, _ in TOOLS]}}
+            {'name': n, 'description': desc, 'inputSchema': sch, 'annotations': tool_annotations(n)}
+            for n, desc, sch, _ in TOOLS]}}
     if method == 'tools/call':
         name = params.get('name')
         args = params.get('arguments') or {}
