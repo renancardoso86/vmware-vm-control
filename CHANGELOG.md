@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.3 - 2026-10-19
+Preparation for the Claude plugin directory.
+- `.mcp.json` starts `server\launch.cmd` directly instead of through `cmd /d /c`. The Claude desktop app runs it as `cmd.exe /d /s /c "...launch.cmd"` by itself and Claude Code reports it connected (both tested on Windows 11); the directory scan holds servers whose command goes through a shell.
+- README: new **Data and network** section - what leaves the PC (the pinned python.org download, only when no Python is found; tool results returned to Claude), what stays on it and how to remove it. It also corrects the change-log note: only `.vmx` password values are hidden; the first line of each guest script and guest variable values are logged as given.
+- README: one-line install (`/plugin install vmware-vm-control --marketplace renancardoso86/vmware-vm-control`) and the real desktop-app path (Settings > Plugins > Add > Add marketplace > Add from a repository, GitHub access for the Claude GitHub App, Discover > Add).
+- Descriptions say the plugin is for **Windows hosts**; `plugin.json` gains `homepage` and `repository`.
+- Tested in the Claude desktop app (Windows 11): installed from the marketplace with no Python on the user PATH, the first start downloaded Python and the server ran in 8 s; the app installs a first version without a restart.
+
 ## 0.5.2 - 2026-10-19
 - **Marketplace / Claude Code installs no longer need Python on Windows**: when no Python is found (bundled, downloaded earlier, `py`, `python`), the launcher runs `get-python.ps1`, which downloads the official embeddable Python from python.org once into `%USERPROFILE%\.vmware-vm-control\python`. The zip must match the SHA-256 pinned in `server/python-embed.txt` (the same pin the release workflow uses) and `python.exe` must carry a valid Python Software Foundation signature; otherwise nothing is installed and the error says what to do. Tested on Windows 11 with no Python visible: first start 21 s (download included), next starts 1.5 s; a wrong hash was refused and left nothing behind. `vm_list` reports the Python as "downloaded".
 - **Clicks on guests without VMware Tools**: the first click after the guest booted was lost (Windows 10 setup: 2 of 2 times). Clicks, drags and scrolls now move next to the target, pause 0.15 s and then move onto it before pressing; the same first click worked 2 of 2 times.

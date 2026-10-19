@@ -8,7 +8,7 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 
 ## Status (2026-10-19)
 
-- Latest release: **v0.5.2** (2026-10-19): first-start Python download for marketplace / Claude Code installs (decision 2026-10-19: option c) and the click fix for guests without Tools. Release asset 12,487,609 bytes, no nested zip.
+- Latest release: **v0.5.3** (2026-10-19): directory preparation - `.mcp.json` without the `cmd` wrapper, README "Data and network", Windows-host descriptions. Before it, **v0.5.2** (2026-10-19): first-start Python download for marketplace / Claude Code installs (decision 2026-10-19: option c) and the click fix for guests without Tools. Release asset 12,487,609 bytes, no nested zip.
 - Installed on Renan's PC **from the marketplace** (2026-10-19), `vm_list` shows "0.5.2 on Python 3.14.8 (downloaded)". The downloaded Python (`%USERPROFILE%\.vmware-vm-control\python`, ~24 MB) was deleted afterwards at Renan's request (2026-10-19); with PATH restored the plugin uses his installed Python after the next app restart.
 - The Claude app stores plugins in `%LOCALAPPDATA%\Claude-Data\...\rpm\...`; the bundled Python runs from there too.
 - VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us), `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login. `Click-Test` deleted.
@@ -28,7 +28,7 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 | **Layout-aware typing** (US, ABNT2 tables; Alt+0NNN fallback) | VMware VNC maps keysyms to US scan codes and never adds Shift |
 | Pure Python 3.6+ stdlib, own RFB client and DES | Installable by anyone; no pip |
 | `launch.cmd` copies server to `%USERPROFILE%\.vmware-vm-control\server` | Python from Microsoft Store / Python Install Manager is sandboxed and cannot read `%APPDATA%\Claude` |
-| Every change logged (`changes.log`, secrets masked) + timestamped `.vmx` backups | Traceability on customer/engineering VMs |
+| Every change logged (`changes.log`, .vmx passwords hidden) + timestamped `.vmx` backups | Traceability on customer/engineering VMs |
 | Text in English (plugin, README); conversation with Renan in Portuguese | Distribution to any professional |
 | `vm_create` (0.4.0) writes the `.vmx` itself + `vmware-vdiskmanager` disk, guest presets XP-2025 | Creating test VMs without the VMware wizard; XP/2003 get IDE disk + default PCnet NIC (in-box drivers), Vista+ SATA + e1000/e1000e; Windows 11 left to the wizard (TPM + encryption) |
 | Hardware version: only verified mappings (`vmrun 1.17` -> 20), else highest among existing VMs, else ask | Never guess; hw 20 also opens on Workstation 17.0 (Renan's existing VMs use 21) |
@@ -41,7 +41,7 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 ## Architecture
 
 ```
-Claude Desktop -> plugin .mcp.json -> cmd /c launch.cmd -> py -3 vm_control.py  (stdio JSON-RPC, MCP)
+Claude Desktop -> plugin .mcp.json -> launch.cmd (the client runs it through cmd itself) -> py -3 vm_control.py  (stdio JSON-RPC, MCP)
 vm_control.py : tools, discovery (inventory.vmls / preferences.ini), vmrun wrapper, .vmx editing, state.json
 vnc_client.py : RFB 3.3/3.7/3.8, VNC auth, Raw + DesktopSize, PNG encoder, pointer/key events
 vnc_des.py    : DES for VNC auth
@@ -91,6 +91,9 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 - `vmrun setPortForwarding` and `typeKeystrokesInGuest` fail from the Claude app on Renan's PC ("Failed to set port forwarding", "Insufficient permissions in the host operating system"); likely needs administrator rights (a levantar).
 - Copying the repo to OneDrive: use `git -c core.autocrlf=false archive` from the tag - a clone on Windows converts line endings and a robocopy also takes `__pycache__`.
 - `vm_create` SATA presets verified on Server 2019 (2026-10-16): disk with adapter `lsilogic` on `sata0:0` works without drivers.
+- Directory submission (claude.ai/directory/manage > Submit new > Plugin bundle) goes to the **community** directory/marketplace; the official marketplace is curated by Anthropic with no application. Pro/Max submit from their own account. Expected holds for a reviewer: runtime Python download (`get-python.ps1`) and scripts in a plugin subfolder.
+- `.mcp.json` with the `.cmd` as `command` (no `cmd /c`) works: the Claude app runs `cmd.exe /d /s /c "<launch.cmd>"` itself, and `claude mcp list` (Claude Code on Windows) shows it connected (2026-10-19).
+- The Claude app also starts a second copy of the server from `%USERPROFILE%\.claude\plugins\synced\...` (plugins synced for Claude Code), here still the older uploaded build with the bundled Python.
 - The Claude app can run two instances of the plugin server at the same time (seen after reconnections); each keeps its own state in memory.
 - Windows dialogs opened by the plugin server (credential prompt) appear behind the user's windows unless brought to the front (done in 0.4.3).
 - Right after the app restarts (e.g. after installing a plugin), the cloud session briefly loses the bridge tools; they come back once the app is open and online.

@@ -10,18 +10,21 @@ Built for people who keep legacy engineering software alive in VMs (PLC / HMI / 
 | Commands, files, processes | `vmrun` + VMware Tools (legacy Tools 10.0.12 for XP / 2003) |
 | VM settings | any `.vmx` key, network adapters, devices, shared folders, snapshots, clones |
 | Setup | **zero-config**: VMs found by name, VNC secured automatically (127.0.0.1 + random password), guest login typed by you in the **native Windows credential dialog** and kept in Windows Credential Manager |
-| Dependencies | Windows: none to install. The release package (`.plugin`) bundles Python; marketplace / Claude Code installs use an installed Python 3.6+ or download the official embeddable Python from python.org on first start (about 20 s, once). Linux / macOS hosts: Python 3.6+. Standard library only |
+| Dependencies | Windows: none to install. The release package (`.plugin`) bundles Python; marketplace / Claude Code installs use an installed Python 3.6+ or download the official embeddable Python from python.org on first start (8 to 21 s in tests, once). Linux / macOS hosts: Python 3.6+ and a manual `.mcp.json` change (untested). Standard library only |
+| Host | **Windows** (built and tested on Windows 11) |
+| Data | Nothing leaves the PC except tool results returned to Claude and, only when no Python is found, the pinned Python download from python.org - see [Data and network](plugins/vmware-vm-control/README.md#data-and-network) |
 
 ## Install
 
-**Claude desktop app (Cowork):** in *Customize > Plugins*, choose *Add > Add marketplace > Add from a repository* and enter `renancardoso86/vmware-vm-control`, then install the plugin (with no Python on the PC, the first start downloads the official embeddable Python from python.org - needs internet once) - or download `vmware-vm-control.plugin` from the [latest release](../../releases/latest) and use *Add > Upload plugin* (Python bundled, nothing else to install). Restart the Claude app after installing or updating. The plugin runs a program on your PC, so it works in Cowork and Claude Code, not in chat on the web.
+**Claude desktop app (Cowork):** in *Settings > Plugins*, choose *Add > Add marketplace > Add from a repository*, enter `renancardoso86/vmware-vm-control` and select *Sync*; when the app asks, grant the Claude GitHub App access to the repository (GitHub asks you to confirm your account). Then, on the *Discover* tab, select *Add* next to the plugin. It starts within seconds; with no Python on the PC, the first start downloads the official embeddable Python from python.org (needs internet once). Or download `vmware-vm-control.plugin` from the [latest release](../../releases/latest) and upload it in *Settings > Plugins > Add* (Python bundled, nothing else to install). Restart the Claude app after updating. The plugin runs a program on your PC, so it works in Cowork and Claude Code, not in chat on the web.
 
 **Claude Code:**
 
 ```
-/plugin marketplace add renancardoso86/vmware-vm-control
-/plugin install vmware-vm-control@vmware-vm-control
+/plugin install vmware-vm-control --marketplace renancardoso86/vmware-vm-control
 ```
+
+(Claude Code before 2.1.275: `/plugin marketplace add renancardoso86/vmware-vm-control`, then `/plugin install vmware-vm-control@vmware-vm-control`.)
 
 Then ask Claude: *"prepare the VM <name> and take a screenshot"*.
 

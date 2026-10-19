@@ -2,6 +2,16 @@
 
 Let Claude operate **VMware Workstation** and **VMware Player** virtual machines from the host: see the screen, click, type, press keys, run `cmd`/PowerShell scripts, copy files, manage processes, power and snapshots.
 
+**Host: Windows.** The plugin is built and tested on Windows hosts (Windows 11). Linux and macOS hosts need a manual change to `.mcp.json` (see [Non-Windows hosts](#non-windows-hosts)) and have not been tested.
+
+Install from this repository's marketplace:
+
+```
+/plugin install vmware-vm-control --marketplace renancardoso86/vmware-vm-control
+```
+
+In the Claude desktop app: Settings > Plugins > Add > Add marketplace > Add from a repository, enter `renancardoso86/vmware-vm-control`, then add **vmware-vm-control**.
+
 **Compatibility mode by design:** nothing modern runs inside the guest. Screen, mouse and keyboard use the VNC server embedded in VMware itself, and commands/files use `vmrun` + VMware Tools. That makes it work with **any Windows guest from XP onward, including Windows Server 2003 to 2025 (Desktop Experience or Core)** (and most tools also with Linux guests).
 
 ## Version independence
@@ -65,9 +75,27 @@ Guest OS settings (IP, firewall, RDP, users, services, registry, silent installs
 - `vmrun` receives the guest password on its command line (visible to local process listings on the host).
 - Guest logins live in the Windows Credential Manager (DPAPI-encrypted per user). The optional config file should not hold passwords.
 
+## Data and network
+
+What leaves the PC:
+
+- **Python download (only when needed).** If the plugin finds no Python it can use (none bundled, none downloaded earlier, no installed `py` / `python`), `get-python.ps1` downloads the official embeddable Python once from `https://www.python.org/ftp/python/<version>/` into `%USERPROFILE%\.vmware-vm-control\python`. The version and SHA-256 are pinned in `server/python-embed.txt`; a file with another hash is refused, and `python.exe` must carry a valid Authenticode signature of the Python Software Foundation. Nothing else is downloaded, and nothing is installed system-wide.
+- **Tool results go to Claude.** Like any MCP server, the plugin returns its results (VM screenshots, command output, file and process lists, .vmx settings) to the Claude conversation that called the tool. The stored guest password and the VNC password are not returned (`.vmx` secrets show as `<hidden>`).
+
+No other network traffic: the server sends no telemetry and contacts no other service. VNC connections go to the VM's embedded VNC server on `127.0.0.1` (configurable with `vnc_host` in the optional config); `vmrun` runs locally.
+
+What stays on the PC:
+
+- Guest logins: Windows Credential Manager, target `vmware-vm-control:<vmx path>` (DPAPI-encrypted, per Windows user).
+- VNC password and port: in the VM's `.vmx` (VMware's own setting).
+- `%USERPROFILE%\.vmware-vm-control\`: `server\` (runtime copy of the server files), `python\` (downloaded Python, if any), `state.json` (keyboard layouts), `changes.log` (every change made; `.vmx` password values are hidden, while the first line of each guest script and guest variable values are logged as given), optional `config.json`.
+- Timestamped `.vmx` backups next to each VM before every edit.
+
+The plugin does not change Windows settings, permissions or Claude settings. Delete `%USERPROFILE%\.vmware-vm-control` and the `vmware-vm-control:` entries in Credential Manager to remove everything it stored.
+
 ## How it starts (Windows)
 
-`.mcp.json` runs `server\launch.cmd`, which copies the server files (`*.py`) to `%USERPROFILE%\.vmware-vm-control\server` and starts them with the Python bundled in the package (`python\python.exe`, the official embeddable build), or the one downloaded earlier into `%USERPROFILE%\.vmware-vm-control\python`, or else an installed `py -3` / `python` (the Microsoft Store alias is skipped). With none of them, `get-python.ps1` downloads the official embeddable Python from python.org once (version and SHA-256 pinned in `python-embed.txt`, `python.exe` signature checked: Python Software Foundation); this first start takes about 20 s and needs internet access to python.org. The copy is needed because Python builds that run isolated (Microsoft Store, Python Install Manager) cannot read files inside `%APPDATA%\Claude`, where plugins are installed. `vm_list` shows the plugin version and which Python is in use.
+`.mcp.json` runs `server\launch.cmd`, which copies the server files (`*.py`) to `%USERPROFILE%\.vmware-vm-control\server` and starts them with the Python bundled in the package (`python\python.exe`, the official embeddable build), or the one downloaded earlier into `%USERPROFILE%\.vmware-vm-control\python`, or else an installed `py -3` / `python` (the Microsoft Store alias is skipped). With none of them, `get-python.ps1` downloads the official embeddable Python from python.org once (version and SHA-256 pinned in `python-embed.txt`, `python.exe` signature checked: Python Software Foundation); this first start took 8 to 21 s in tests and needs internet access to python.org. The copy is needed because Python builds that run isolated (Microsoft Store, Python Install Manager) cannot read files inside `%APPDATA%\Claude`, where plugins are installed. `vm_list` shows the plugin version and which Python is in use.
 
 ## Non-Windows hosts
 
