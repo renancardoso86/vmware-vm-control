@@ -1,0 +1,4 @@
+# Official embeddable Python used when no Python is available (release package: bundled; other installs:
+# downloaded on first start by get-python.ps1). Update both lines together - sha256 of the zip from python.org.
+version=3.14.8
+sha256=a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310

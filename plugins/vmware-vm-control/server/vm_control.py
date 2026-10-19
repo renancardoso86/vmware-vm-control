@@ -487,10 +487,13 @@ def _map(d, x, y):
 
 
 def python_origin():
-    """'bundled' when running on the embeddable Python shipped in the plugin (it has a pythonXY._pth file)."""
+    """'bundled' (embeddable Python shipped in the release package), 'downloaded' (embeddable Python fetched by
+    get-python.ps1 into ~/.vmware-vm-control/python) or 'installed'. Embeddable builds have a pythonXY._pth file."""
     exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    pth = os.path.join(exe_dir, 'python%d%d._pth' % sys.version_info[:2])
-    return 'bundled' if os.path.exists(pth) else 'installed'
+    if not os.path.exists(os.path.join(exe_dir, 'python%d%d._pth' % sys.version_info[:2])):
+        return 'installed'
+    home_py = os.path.join(os.path.expanduser('~'), '.vmware-vm-control', 'python')
+    return 'downloaded' if os.path.normcase(exe_dir) == os.path.normcase(home_py) else 'bundled'
 
 
 def server_info():
@@ -624,7 +627,9 @@ def t_vm_screenshot(a):
 def _after_shot(d, a, msg):
     if a.get('screenshot', False):
         time.sleep(float(a.get('wait', 0.6)))
-        return [{'type': 'text', 'text': msg}] + t_vm_screenshot({'vm': d['name'], 'scale': a.get('scale')})
+        # keep the scale of the last screenshot, so the next click coordinates stay in the same image size
+        scale = a.get('scale') or STATE['scale'].get(d['name'])
+        return [{'type': 'text', 'text': msg}] + t_vm_screenshot({'vm': d['name'], 'scale': scale})
     return msg
 
 

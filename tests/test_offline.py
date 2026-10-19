@@ -88,6 +88,9 @@ class VncTest(unittest.TestCase):
                 v.click(10, 20)
             time.sleep(0.2)
             self.assertIn(('ptr', 1, 10, 20), ev)
+            ptr = [e for e in ev if e[0] == 'ptr']
+            self.assertEqual(ptr[0], ('ptr', 0, 7, 17))           # approach move next to the target first
+            self.assertLess(ptr.index(('ptr', 0, 10, 20)), ptr.index(('ptr', 1, 10, 20)))
             with self.assertRaises(VNCError):
                 VNCClient('127.0.0.1', port, 'errada12').connect()
         finally:
@@ -439,19 +442,32 @@ class ServerTest(unittest.TestCase):
 class PackagingTest(unittest.TestCase):
     ROOT = os.path.join(HERE, '..')
 
-    def test_launcher_prefers_bundled_python_and_skips_store_alias(self):
+    def test_launcher_order_bundled_downloaded_installed_then_download(self):
         t = open(os.path.join(SERVER, 'launch.cmd'), encoding='ascii').read()
         emb, py, alias = t.index('..\\python\\python.exe'), t.index('where py'), t.index('python -c "import sys"')
-        self.assertLess(emb, py)
+        dl, fetch = t.index('%HOME_DIR%\\python\\python.exe'), t.index('get-python.ps1"')
+        self.assertLess(emb, dl)                        # bundled first, then a Python downloaded earlier
+        self.assertLess(dl, py)
         self.assertLess(py, alias)                      # plain "python" only after a real start check
+        self.assertLess(alias, fetch)                   # download only when nothing else works
         self.assertNotIn('where python', t)
+
+    def test_first_start_download_checks_hash_and_signature(self):
+        t = open(os.path.join(SERVER, 'get-python.ps1'), encoding='ascii').read()
+        self.assertIn('python-embed.txt', t)
+        self.assertIn('Get-FileHash -Algorithm SHA256', t)
+        self.assertIn('Get-AuthenticodeSignature', t)
+        self.assertIn('Python Software Foundation', t)
+        self.assertNotIn('Write-Output', t)             # stdout is the MCP channel
 
     def test_release_bundles_pinned_embeddable_python(self):
         import re
         t = open(os.path.join(self.ROOT, '.github', 'workflows', 'release.yml'), encoding='utf-8').read()
-        self.assertRegex(t, r'PY_EMBED_VERSION: "3\.\d+\.\d+"')
-        self.assertRegex(t, r'PY_EMBED_SHA256: "[0-9a-f]{64}"')
+        self.assertIn('python-embed.txt', t)            # same pin as the first-start download
         self.assertIn('sha256sum -c', t)
+        pin = open(os.path.join(SERVER, 'python-embed.txt'), encoding='ascii').read()
+        self.assertRegex(pin, r'(?m)^version=3\.\d+\.\d+\s*$')
+        self.assertRegex(pin, r'(?m)^sha256=[0-9a-f]{64}\s*$')
         self.assertTrue(re.search(r'unzip .*plugins/vmware-vm-control/python', t))
         self.assertIn('unzip -q python3*.zip -d Lib', t)          # the app refuses a zip inside the .plugin
         self.assertIn("grep -qi '\\.zip$'", t)
@@ -459,15 +475,26 @@ class PackagingTest(unittest.TestCase):
     def test_server_reports_version_and_python_origin(self):
         import vm_control
         self.assertIn(vm_control.SERVER_VERSION, vm_control.server_info())
+        pth = 'python%d%d._pth' % sys.version_info[:2]
+        old_exe, old_env = sys.executable, {k: os.environ.get(k) for k in ('HOME', 'USERPROFILE')}
         with tempfile.TemporaryDirectory() as d:
-            exe = os.path.join(d, 'python.exe')
-            open(os.path.join(d, 'python%d%d._pth' % sys.version_info[:2]), 'w').close()
-            old = sys.executable
+            open(os.path.join(d, pth), 'w').close()
+            home_py = os.path.join(d, 'home', '.vmware-vm-control', 'python')
+            os.makedirs(home_py)
+            open(os.path.join(home_py, pth), 'w').close()
             try:
-                sys.executable = exe
+                sys.executable = os.path.join(d, 'python.exe')
                 self.assertEqual(vm_control.python_origin(), 'bundled')
+                os.environ['HOME'] = os.environ['USERPROFILE'] = os.path.join(d, 'home')
+                sys.executable = os.path.join(home_py, 'python.exe')
+                self.assertEqual(vm_control.python_origin(), 'downloaded')
             finally:
-                sys.executable = old
+                sys.executable = old_exe
+                for k, val in old_env.items():
+                    if val is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = val
         self.assertEqual(vm_control.python_origin(), 'installed')
 
     def test_versions_match(self):

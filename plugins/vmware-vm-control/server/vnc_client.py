@@ -230,10 +230,18 @@ class VNCClient:
         y = max(0, min(self.height - 1, int(y)))
         self.sock.sendall(struct.pack('>BBHH', 5, mask, x, y))
 
-    def click(self, x, y, button='left', double=False):
-        bit = {'left': 1, 'middle': 2, 'right': 4}[button]
+    def approach(self, x, y):
+        """Move next to (x, y), pause, then onto it. A Windows guest without VMware Tools ignored the first click
+        after boot when the press followed a single move (Windows 10 setup, 2026-10-19: lost 2 of 2 times; with this
+        approach 2 of 2 worked)."""
+        self.pointer(x - 3 if x >= 3 else x + 3, y - 3 if y >= 3 else y + 3, 0)
+        time.sleep(0.15)
         self.pointer(x, y, 0)
         time.sleep(0.05)
+
+    def click(self, x, y, button='left', double=False):
+        bit = {'left': 1, 'middle': 2, 'right': 4}[button]
+        self.approach(x, y)
         for _ in range(2 if double else 1):
             self.pointer(x, y, bit)
             time.sleep(0.06)
@@ -241,8 +249,7 @@ class VNCClient:
             time.sleep(0.08)
 
     def drag(self, x0, y0, x1, y1, steps=12):
-        self.pointer(x0, y0, 0)
-        time.sleep(0.05)
+        self.approach(x0, y0)
         self.pointer(x0, y0, 1)
         time.sleep(0.1)
         for s in range(1, steps + 1):
@@ -252,6 +259,7 @@ class VNCClient:
 
     def scroll(self, x, y, direction='down', amount=3):
         bit = {'up': 8, 'down': 16, 'left': 32, 'right': 64}[direction]
+        self.approach(x, y)
         for _ in range(amount):
             self.pointer(x, y, bit)
             time.sleep(0.03)

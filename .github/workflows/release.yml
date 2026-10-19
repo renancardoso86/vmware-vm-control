@@ -4,11 +4,6 @@ on:
     tags: ["v*"]
 permissions:
   contents: write
-env:
-  # Embeddable Python bundled in the package, so users do not need to install Python.
-  # Update both lines together; the SHA-256 is of the official zip from python.org.
-  PY_EMBED_VERSION: "3.14.8"
-  PY_EMBED_SHA256: "a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310"
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,6 +15,11 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - name: Add the embeddable Python (Windows x64)
         run: |
+          # version and SHA-256 come from the same pin file the launcher uses for the first-start download
+          PIN=plugins/vmware-vm-control/server/python-embed.txt
+          PY_EMBED_VERSION=$(sed -n 's/^version=//p' "$PIN" | tr -d '\r')
+          PY_EMBED_SHA256=$(sed -n 's/^sha256=//p' "$PIN" | tr -d '\r')
+          test -n "$PY_EMBED_VERSION" && test -n "$PY_EMBED_SHA256"
           curl -fsSL -o embed.zip "https://www.python.org/ftp/python/${PY_EMBED_VERSION}/python-${PY_EMBED_VERSION}-embed-amd64.zip"
           echo "${PY_EMBED_SHA256}  embed.zip" | sha256sum -c -
           mkdir -p plugins/vmware-vm-control/python
