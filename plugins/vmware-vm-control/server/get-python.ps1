@@ -4,6 +4,7 @@
 # Writes nothing to stdout (stdout is the MCP channel of the caller); exit code 0 = ready.
 param([Parameter(Mandatory = $true)][string]$Dest)
 $ErrorActionPreference = 'Stop'
+$tmp = $null
 function Say($m) { [Console]::Error.WriteLine("vmware-vm-control: $m") }
 try {
     $pin = @{}
@@ -31,10 +32,11 @@ try {
     if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
     New-Item -ItemType Directory -Force (Split-Path -Parent $Dest) | Out-Null
     Move-Item $out $Dest
-    Remove-Item -Recurse -Force $tmp
     Say "Python $ver ready in $Dest"
     exit 0
 } catch {
     Say ("could not download Python: " + $_.Exception.Message + ". Install Python 3 from python.org, or install the plugin from the release package (it bundles Python).")
     exit 1
+} finally {
+    if ($tmp -and (Test-Path $tmp)) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
 }

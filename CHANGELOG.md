@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 - 2026-10-19
+- **Marketplace / Claude Code installs no longer need Python on Windows**: when no Python is found (bundled, downloaded earlier, `py`, `python`), the launcher runs `get-python.ps1`, which downloads the official embeddable Python from python.org once into `%USERPROFILE%\.vmware-vm-control\python`. The zip must match the SHA-256 pinned in `server/python-embed.txt` (the same pin the release workflow uses) and `python.exe` must carry a valid Python Software Foundation signature; otherwise nothing is installed and the error says what to do. Tested on Windows 11 with no Python visible: first start 21 s (download included), next starts 1.5 s; a wrong hash was refused and left nothing behind. `vm_list` reports the Python as "downloaded".
+- **Clicks on guests without VMware Tools**: the first click after the guest booted was lost (Windows 10 setup: 2 of 2 times). Clicks, drags and scrolls now move next to the target, pause 0.15 s and then move onto it before pressing; the same first click worked 2 of 2 times.
+- A screenshot returned after an action (`screenshot: true`) keeps the scale of the previous screenshot, so the next click coordinates stay in the same image size.
+
 ## 0.5.1 - 2026-10-16
 First public release with the bundled Python (0.5.0 was a test build only, installed on the author's PC).
 

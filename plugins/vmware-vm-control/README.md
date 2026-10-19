@@ -18,7 +18,7 @@ The plugin does not target one VMware or VMware Tools release:
 
 | Where | What |
 |---|---|
-| Host | Windows, Linux or macOS with any VMware Workstation, Player or Fusion release that ships `vmrun` (or the VIX API); Windows: nothing else - the release package bundles Python. Installs without the bundled Python (marketplace or Claude Code from the Git repository, Linux, macOS): Python 3.6+ (`py` launcher on Windows). No extra Python packages. |
+| Host | Windows, Linux or macOS with any VMware Workstation, Player or Fusion release that ships `vmrun` (or the VIX API); Windows: nothing else - the release package bundles Python; marketplace / Claude Code installs use an installed Python 3.6+ or download the official embeddable Python on first start. Linux / macOS: Python 3.6+. No extra Python packages. |
 | Guest - screen/mouse/keyboard | Nothing. Only VNC enabled in the VM's settings. |
 | Guest - commands/files/processes | VMware Tools. XP / 2003 / 2000: legacy **VMware Tools 10.0.12** (`winPreVista.iso`). Windows 7: SHA-2 updates KB4474419 + KB4490628 before Tools 11+. A guest account **with a password**. |
 
@@ -46,7 +46,7 @@ Guest OS settings (IP, firewall, RDP, users, services, registry, silent installs
 
 ## Getting started (no configuration file)
 
-1. Install the plugin from the release package (it bundles Python for Windows; without it, Python 3.6+ must be installed on the host).
+1. Install the plugin. On Windows nothing else is needed: the release package bundles Python, and a marketplace install with no Python on the PC downloads the official embeddable Python on first start (Linux / macOS: Python 3.6+).
 2. Ask Claude to prepare a VM by its VMware name, e.g. *"prepare the VM Win7 Lab"*. Claude calls `vm_prepare`, which:
    - finds the VM in VMware's library / recent list (no registration);
    - enables VMware's embedded VNC **bound to 127.0.0.1** with a **random password** written to the .vmx (VM must be off, or Claude asks you before a restart);
@@ -67,7 +67,7 @@ Guest OS settings (IP, firewall, RDP, users, services, registry, silent installs
 
 ## How it starts (Windows)
 
-`.mcp.json` runs `server\launch.cmd`, which copies the server files (`*.py`) to `%USERPROFILE%\.vmware-vm-control\server` and starts them with the Python bundled in the package (`python\python.exe`, the official embeddable build), or else with an installed `py -3` / `python` (the Microsoft Store alias is skipped). The copy is needed because Python builds that run isolated (Microsoft Store, Python Install Manager) cannot read files inside `%APPDATA%\Claude`, where plugins are installed. `vm_list` shows the plugin version and which Python is in use.
+`.mcp.json` runs `server\launch.cmd`, which copies the server files (`*.py`) to `%USERPROFILE%\.vmware-vm-control\server` and starts them with the Python bundled in the package (`python\python.exe`, the official embeddable build), or the one downloaded earlier into `%USERPROFILE%\.vmware-vm-control\python`, or else an installed `py -3` / `python` (the Microsoft Store alias is skipped). With none of them, `get-python.ps1` downloads the official embeddable Python from python.org once (version and SHA-256 pinned in `python-embed.txt`, `python.exe` signature checked: Python Software Foundation); this first start takes about 20 s and needs internet access to python.org. The copy is needed because Python builds that run isolated (Microsoft Store, Python Install Manager) cannot read files inside `%APPDATA%\Claude`, where plugins are installed. `vm_list` shows the plugin version and which Python is in use.
 
 ## Non-Windows hosts
 

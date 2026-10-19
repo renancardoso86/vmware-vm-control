@@ -10,11 +10,11 @@ Built for people who keep legacy engineering software alive in VMs (PLC / HMI / 
 | Commands, files, processes | `vmrun` + VMware Tools (legacy Tools 10.0.12 for XP / 2003) |
 | VM settings | any `.vmx` key, network adapters, devices, shared folders, snapshots, clones |
 | Setup | **zero-config**: VMs found by name, VNC secured automatically (127.0.0.1 + random password), guest login typed by you in the **native Windows credential dialog** and kept in Windows Credential Manager |
-| Dependencies | Windows + release package (`.plugin`): none, Python is bundled. Marketplace / Claude Code installs and other hosts: Python 3.6+ (standard library only) |
+| Dependencies | Windows: none to install. The release package (`.plugin`) bundles Python; marketplace / Claude Code installs use an installed Python 3.6+ or download the official embeddable Python from python.org on first start (about 20 s, once). Linux / macOS hosts: Python 3.6+. Standard library only |
 
 ## Install
 
-**Claude desktop app (Cowork):** in *Customize > Plugins*, choose *Add > Add marketplace > Add from a repository* and enter `renancardoso86/vmware-vm-control`, then install the plugin (needs Python 3.6+ with the `py` launcher) - or download `vmware-vm-control.plugin` from the [latest release](../../releases/latest) and use *Add > Upload plugin* (Python bundled, nothing else to install). Restart the Claude app after installing or updating. The plugin runs a program on your PC, so it works in Cowork and Claude Code, not in chat on the web.
+**Claude desktop app (Cowork):** in *Customize > Plugins*, choose *Add > Add marketplace > Add from a repository* and enter `renancardoso86/vmware-vm-control`, then install the plugin (with no Python on the PC, the first start downloads the official embeddable Python from python.org - needs internet once) - or download `vmware-vm-control.plugin` from the [latest release](../../releases/latest) and use *Add > Upload plugin* (Python bundled, nothing else to install). Restart the Claude app after installing or updating. The plugin runs a program on your PC, so it works in Cowork and Claude Code, not in chat on the web.
 
 **Claude Code:**
 

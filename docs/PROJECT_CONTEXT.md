@@ -6,13 +6,13 @@ Upload this file to the Claude project "vmware-vm-control". It is the hand-off o
 
 A plugin that lets Claude operate and configure **any VMware Workstation / Player VM, any Windows guest from XP onward (incl. Server 2003-2025)**, usable by any professional - not tied to one VMware version, one VMware Tools version or one machine. Owner: Renan Cardoso - Dominio Automacao. Licence MIT. Public repo: `github.com/renancardoso86/vmware-vm-control`.
 
-## Status (2026-10-16, late afternoon)
+## Status (2026-10-19)
 
-- Latest release: **v0.5.1** - the release package bundles the official embeddable Python 3.14.8, so Windows users do not install Python. Marketplace / Claude Code installs come from the Git repository and still need Python 3.6+ (decision on bundling for those: a levantar - options: keep as is, commit Python to the repo, or download it on first use).
-- Renan's app runs a 0.5.0 test build of the same code (bundled Python confirmed from the app's plugin folder); the 0.5.1 package replaces it.
-- VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us) and `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login. Test VMs deleted; `state.json` `_created` = [].
-- Installation guides (PDF, English and Portuguese) in the OneDrive `dist\` folder.
-- Next: marketplace decision, more layouts, admin-rights test for NAT/Tools typing, Linux/macOS host.
+- Latest release: **v0.5.1** (release package bundles Python 3.14.8; installed on Renan's PC, `vm_list` shows "bundled"). Prepared, not yet published: **0.5.2** - first-start Python download for marketplace / Claude Code installs (decision 2026-10-19: option c) and the click fix for guests without Tools.
+- The Claude app moved its plugin folder to `%LOCALAPPDATA%\Claude-Data\...`; the bundled Python runs from there too.
+- VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us), `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login; `Click-Test` (Win10 setup ISO, powered off) left from the click investigation - delete after Renan's OK.
+- Installation guides (PDF, EN/PT) in OneDrive `dist\` describe 0.5.1 (ways A/C "need Python"); update them with 0.5.2.
+- A levantar: whether the Claude app waits the ~21 s of the first-start download (MCP start-up timeout) - needs a marketplace install in the app.
 
 ## Decisions (with the reason)
 
@@ -34,7 +34,9 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 | Hardware version: only verified mappings (`vmrun 1.17` -> 20), else highest among existing VMs, else ask | Never guess; hw 20 also opens on Workstation 17.0 (Renan's existing VMs use 21) |
 | Guest operations check VMware Tools before asking for the login | Without Tools the credential dialog appeared for nothing (found in the XP test) |
 | Release package bundles the **official embeddable Python** (python.org, SHA-256 pinned in `release.yml`), stdlib unpacked to `python/Lib` | Users should not need to install Python (corporate PCs); the PSF-signed `python.exe` is less likely to be blocked than a self-built `.exe`; the Claude app refuses a `.plugin` containing a zip |
-| `launch.cmd` order: bundled Python, `py`, `python` (only if it really starts) | Windows 10/11 ship a Microsoft Store `python` alias that is not a real Python (exit 9009) |
+| `launch.cmd` order: bundled Python, Python downloaded earlier, `py`, `python` (only if it really starts), then download | Windows 10/11 ship a Microsoft Store `python` alias that is not a real Python (exit 9009) |
+| Marketplace / Claude Code installs download the official embeddable Python on first start (`get-python.ps1`, pin in `python-embed.txt` shared with the release workflow, SHA-256 + PSF signature checked) - decision 2026-10-19 | Repository installs carry no Python; committing ~20 MB of binaries to Git was rejected; one pin file keeps release package and download on the same Python |
+| Clicks/drags/scrolls approach the target (move 3 px away, 0.15 s, move onto it) before pressing | Without VMware Tools the first click after boot was lost 2/2 times; with the approach 2/2 worked |
 
 ## Architecture
 
@@ -55,6 +57,8 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 
 | Guest | Passed | Notes |
 |---|---|---|
+| Win 10 22H2 setup (no Tools) VM `Click-Test` - click investigation 2026-10-19 | combo-box click detected by pixel check through raw VNC: from a far corner 6/6 and plugin-like single connection 5/5 worked; **first click after boot failed 2/2** (second click worked); with the approach move the first click after boot worked 2/2 (one with the new `vnc_client.click`) | earlier "ignored clicks" during the Win10 install were this; one more case in the session was a coordinate mix-up (screenshot scale changed by `screenshot: true`) -> scale now kept |
+| Host Windows 11, no Python visible (PATH = System32 only), repository layout without `python\` - 2026-10-19, 0.5.2 code | first start downloaded Python 3.14.8 (21 s) and served 28 tools ("downloaded"); second start 1.5 s; wrong SHA-256 refused, nothing installed, temp folder removed | - |
 | Win 10 Pro 22H2 (fresh, no Python, no network) created by `vm_create` preset 10-64 - 2026-10-16, plugin 0.5.0 test build | SATA disk seen by setup without drivers; whole install + OOBE through VNC (local account, no password); Tools installed from Win+R; shared folder add/enable/set_state once Tools ran; package expanded in the guest and server started on the bundled Python (28 tools, 1.7 s); with the bundled Python removed the launcher stopped with "Python 3 not found" (Store alias exit 9009 not used) | `vm_shared_folders add` hung while Tools were not running (vmrun never returns) -> Tools check + 40 s limit; first click on some setup screens ignored, second worked (cause: a levantar) |
 | Win 7 SP1 Pro (ABNT2, Tools 12, VMnet2 host-only) | VNC screen incl. boot, click, keys, ABNT2 typing, cmd, PS 2.0, copy, Tools/IP, credential dialog | first layout detection missed the `d0010416` substitute -> fixed 0.3.1 |
 | Win XP Pro SP1 (setup only, no VMware Tools) - 2026-10-16, plugin 0.4.0 test build | `vm_create` XP preset (IDE disk seen as "atapi", CD boot, NAT, VNC 127.0.0.1:5903 auto-picked); VNC from first boot second incl. text-mode setup; keys (Enter, F8, arrows with repeat), clicks on lists/tabs/combos, typing; regional = Portuguese (Brazil) + ABNT2 set in setup; `vm_guest_info` / `vm_prepare` without Tools | stopped at product key (no XP licence); `vm_run` not run (would have opened the credential dialog -> fixed); `deleteVM` refused while the VM tab was open in Workstation -> clear message + cleanup of plugin backups added |
@@ -90,6 +94,8 @@ Host: Windows 11, VMware Workstation 17.5 (vmrun 1.17.0 build-23298084), Python 
 - Windows dialogs opened by the plugin server (credential prompt) appear behind the user's windows unless brought to the front (done in 0.4.3).
 - Right after the app restarts (e.g. after installing a plugin), the cloud session briefly loses the bridge tools; they come back once the app is open and online.
 - Consider printing `SERVER_VERSION` in `vm_list` so the installed version can be checked without reading files on the PC.
+- Guests without VMware Tools can drop the first click after boot (seen in Windows 10 setup); fixed by the approach move in 0.5.2.
+- `%TEMP%\vmware-vm-control` (release working copy on Renan's PC) lost its `.git` between sessions; the release flow re-clones it when needed.
 - Copying a 5.6 GB ISO from the SharePoint sync folder took about 10 minutes (~13 MB/s download).
 - The Claude app refuses a `.plugin` that contains a `.zip` file ("Zip cannot contain nested zip files").
 - `Expand-Archive` (PowerShell 5) only accepts files ending in `.zip`; copy a `.plugin` to `.zip` first.
