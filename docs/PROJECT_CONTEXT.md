@@ -9,7 +9,7 @@ A plugin that lets Claude operate and configure **any VMware Workstation / Playe
 ## Status (2026-10-19)
 
 - Latest release: **v0.5.2** (2026-10-19): first-start Python download for marketplace / Claude Code installs (decision 2026-10-19: option c) and the click fix for guests without Tools. Release asset 12,487,609 bytes, no nested zip.
-- Installed on Renan's PC **from the marketplace** (2026-10-19), `vm_list` shows "0.5.2 on Python 3.14.8 (downloaded)". `%USERPROFILE%\.vmware-vm-control\python` (downloaded Python, ~24 MB) is kept; while it exists the plugin uses it before the installed Python.
+- Installed on Renan's PC **from the marketplace** (2026-10-19), `vm_list` shows "0.5.2 on Python 3.14.8 (downloaded)". The downloaded Python (`%USERPROFILE%\.vmware-vm-control\python`, ~24 MB) was deleted afterwards at Renan's request (2026-10-19); with PATH restored the plugin uses his installed Python after the next app restart.
 - The Claude app stores plugins in `%LOCALAPPDATA%\Claude-Data\...\rpm\...`; the bundled Python runs from there too.
 - VMs on Renan's PC: `Win Server2008R2` (VNC 5902, layout us), `Bartec-BMSGraf-Win7` (VNC 5901, layout abnt2), both with stored login. `Click-Test` deleted.
 - Installation guides (PDF, EN/PT) in OneDrive `dist\` describe 0.5.2 with the real marketplace UI path (checked in the Portuguese app; English labels are translations).
