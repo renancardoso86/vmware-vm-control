@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.7 - 2026-11-09
+- New commit so the Claude plugin directory checks the plugin again: its first check of 0.5.6 ended "Plugin not fully checked" (Directory policy) and the portal checks again only when a new commit arrives. No change to how the plugin works.
+
 ## 0.5.6 - 2026-10-19
 Items the Anthropic Software Directory Policy asks of MCP servers and listed software:
 - Every tool now carries MCP annotations: `title`, `readOnlyHint` (only `vm_list`, `vm_setup_help`, `vm_screenshot`, `vm_guest_info`), `destructiveHint` (true where a call can delete, overwrite, revert, stop, kill, run guest commands or send input the guest may act on), `idempotentHint`, and `openWorldHint: false` (everything runs on the PC).
